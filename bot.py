@@ -5,8 +5,10 @@ from datetime import datetime
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
+# Принудительно отключаем буферизацию вывода логов для Railway
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
+
 print("--- [DOCKER START] ЗАПУСК НАДЕЖНОГО ЯДРА БОТА ---", flush=True)
 
 TOKEN = "8827819420:AAGS-aXjMvsewGkxAJbBwt2SggWU8Opk5qc"
@@ -15,8 +17,7 @@ EXCEL_FILE = "diagnostics_results.xlsx"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-telebot.apihelper.CONNECT_TIMEOUT = 15
-telebot.apihelper.READ_TIMEOUT = 15
+# Инициализируем чистого бота без ошибочных конфигураций таймаутов
 bot = telebot.TeleBot(TOKEN, parse_mode="Markdown")
 
 QUESTIONS = [
@@ -142,4 +143,3 @@ def send_question(chat_id, session):
 
 def finish(chat_id, session):
     append_to_excel(session)
-    if session["user_id"] in user_sessions: del user_sessions[session["user_id"]]
