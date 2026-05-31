@@ -5,10 +5,8 @@ from datetime import datetime
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# Принудительно отключаем буферизацию вывода логов для Railway
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
-
 print("--- [DOCKER START] ЗАПУСК НАДЕЖНОГО ЯДРА БОТА ---", flush=True)
 
 TOKEN = "8827819420:AAGS-aXjMvsewGkxAJbBwt2SggWU8Opk5qc"
@@ -138,14 +136,10 @@ def send_question(chat_id, session):
     q = QUESTIONS[idx]
     progress = int((idx / len(QUESTIONS)) * 10)
     text = f"📌 *{q['s']}*\n\n*Вопрос {idx+1} из {len(QUESTIONS)}*\n{'▓'*progress + '░'*(10-progress)}\n\n{q['q']}"
-    
-    reply_markup = None
-    if q["t"] == "scale":
-        reply_markup = get_scale_keyboard()
-    elif q["t"] == "choice":
-        reply_markup = get_choice_keyboard(q["opts"])
-        
+    reply_markup = get_scale_keyboard() if q["t"] == "scale" else (get_choice_keyboard(q["opts"]) if q["t"] == "choice" else None)
     bot.send_message(chat_id, text, reply_markup=reply_markup)
     session["lock"] = False
 
 def finish(chat_id, session):
+    append_to_excel(session)
+    if session["user_id"] in user_sessions: del user_sessions[session["user_id"]]
