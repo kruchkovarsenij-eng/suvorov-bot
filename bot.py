@@ -13,8 +13,6 @@ print("--- [DOCKER START] ЗАПУСК НАДЕЖНОГО ЯДРА БОТА ---"
 
 TOKEN = "8827819420:AAGS-aXjMvsewGkxAJbBwt2SggWU8Opk5qc"
 ADMIN_CHAT_ID = 8743677274
-
-# 🔥 ИСПРАВЛЕНО: Сохраняем файл прямо в корень папки бота, где всегда есть права на запись!
 EXCEL_FILE = "diagnostics_results.xlsx"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -148,3 +146,6 @@ def send_question(chat_id, session):
         bot.send_message(chat_id, text)
     session["lock"] = False
 
+@bot.message_handler(commands=['start'])
+def start_command(message):
+    user = message.from_user
