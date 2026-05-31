@@ -5,10 +5,8 @@ from datetime import datetime
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# Принудительно отключаем буферизацию вывода логов ядра Python для Railway
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
-
 print("--- [DOCKER START] ЗАПУСК НАДЕЖНОГО ЯДРА БОТА ---", flush=True)
 
 TOKEN = "8827819420:AAGS-aXjMvsewGkxAJbBwt2SggWU8Opk5qc"
@@ -17,10 +15,8 @@ EXCEL_FILE = "diagnostics_results.xlsx"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Настраиваем сетевой тайм-аут подключения, чтобы Python 3.13 не зависал в дедлоке
 telebot.apihelper.CONNECT_TIMEOUT = 10
 telebot.apihelper.READ_TIMEOUT = 10
-
 bot = telebot.TeleBot(TOKEN, parse_mode="Markdown")
 
 QUESTIONS = [
@@ -109,10 +105,8 @@ def append_to_excel(session):
 
 def get_scale_keyboard():
     markup = InlineKeyboardMarkup(row_width=5)
-    row1 = [InlineKeyboardButton(str(i), callback_data=f"scale_{i}") for i in range(1, 6)]
-    row2 = [InlineKeyboardButton(str(i), callback_data=f"scale_{i}") for i in range(6, 11)]
-    markup.add(*row1)
-    markup.add(*row2)
+    markup.add(*[InlineKeyboardButton(str(i), callback_data=f"scale_{i}") for i in range(1, 6)])
+    markup.add(*[InlineKeyboardButton(str(i), callback_data=f"scale_{i}") for i in range(6, 11)])
     return markup
 
 def get_choice_keyboard(opts):
@@ -143,6 +137,15 @@ def send_question(chat_id, session):
     progress = int((idx / len(QUESTIONS)) * 10)
     text = f"📌 *{q['s']}*\n\n*Вопрос {idx+1} из {len(QUESTIONS)}*\n{'▓'*progress + '░'*(10-progress)}\n\n{q['q']}"
     
+    reply_markup = None
     if q["t"] == "scale":
-        bot.send_message(chat_id, text, reply_markup=get_scale_keyboard())
+        reply_markup = get_scale_keyboard()
     elif q["t"] == "choice":
+        reply_markup = get_choice_keyboard(q["opts"])
+        
+    bot.send_message(chat_id, text, reply_markup=reply_markup)
+    session["lock"] = False
+
+@bot.message_handler(commands=['start'])
+def start_command(message):
+    user = message.from_user
