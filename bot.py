@@ -1,7 +1,14 @@
+import sys
+import os
+
+# Сразу включаем вывод логов без буферизации
+sys.stdout.reconfigure(line_buffering=True)
+sys.stderr.reconfigure(line_buffering=True)
+
+print("--- [DOCKER START] СКРИПТ УСПЕШНО ЗАПУЩЕН ---", flush=True)
+
 import logging
 import asyncio
-import os
-import sys
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
@@ -9,10 +16,6 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 TOKEN = "8827819420:AAGS-aXjMvsewGkxAJbBwt2SggWU8Opk5qc"
 ADMIN_CHAT_ID = 8743677274
 EXCEL_FILE = "/app/data/diagnostics_results.xlsx"
-
-# Принудительное отключение буферизации логов для моментального вывода в Railway
-sys.stdout.reconfigure(line_buffering=True)
-sys.stderr.reconfigure(line_buffering=True)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -66,43 +69,35 @@ QUESTIONS = [
 user_sessions = {}
 
 def init_excel():
-    """Создает Excel-файл с динамическим ленивым импортом модулей openpyxl"""
     os.makedirs(os.path.dirname(EXCEL_FILE), exist_ok=True)
     if os.path.exists(EXCEL_FILE): return
-    
     import openpyxl
     from openpyxl.styles import Font, Alignment, PatternFill
-    
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Ответы"
     hf = Font(name="Arial", size=11, bold=True, color="FFFFFF")
     hf_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
     ca = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    
     headers = ["Дата прохождения", "ID Пользователя", "Никнейм (username)"]
     for i, q in enumerate(QUESTIONS):
         headers.append(f"Вопрос {i+1}: {q['q'].replace('\n', ' ')} [{q['s']}]")
-        
     ws.append(headers)
-    for cell in ws[1]:
+    for cell in ws:
         cell.font, cell.fill, cell.alignment = hf, hf_fill, ca
-    ws.row_dimensions[1].height = 35
+    ws.row_dimensions.height = 35
     wb.save(EXCEL_FILE)
 
 def append_to_excel(session):
-    """Добавляет строку анкеты в Excel-файл с ленивым импортом библиотек"""
     init_excel()
     try:
         import openpyxl
         wb = openpyxl.load_workbook(EXCEL_FILE)
         ws = wb.active
-        
         row_data = [datetime.now().strftime("%d.%m.%Y %H:%M"), str(session["user_id"]), f"@{session['username']}" if session["username"] else "—"]
         for i in range(len(QUESTIONS)):
             row_data.append(str(session["answers"][i]) if i < len(session["answers"]) else "—")
         ws.append(row_data)
-        
         for col in ws.columns:
             max_len = max(len(str(cell.value or '')) for cell in col)
             ws.column_dimensions[openpyxl.utils.get_column_letter(col.column)].width = min(max(max_len + 3, 12), 60)
@@ -138,3 +133,7 @@ async def send_question(chat_id, context, session):
     progress = int((idx / len(QUESTIONS)) * 10)
     text = f"📌 *{q['s']}*\n\n*Вопрос {idx+1} из {len(QUESTIONS)}*\n{'▓'*progress + '░'*(10-progress)}\n\n{q['q']}"
     rm = get_scale_keyboard() if q["t"] == "scale" else (get_choice_keyboard(q["opts"]) if q["t"] == "choice" else None)
+    await context.bot.send_message(chat_id, text, reply_markup=rm, parse_mode="Markdown")
+    session["lock"] = False
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
