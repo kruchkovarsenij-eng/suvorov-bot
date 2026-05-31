@@ -7,11 +7,8 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill
 
-# ⚠️ КОНФИГУРАЦИЯ БОТА
-TOKEN = "8827819420:AAGS-aXjMvsewGkxAJbBwt2SggWU8Opk5qc"
-ADMIN_CHAT_ID = 8743677274
-
-# 💾 Путь к Excel-файлу строго на подключенном диске Railway Volume (/app/data)
+TOKEN = os.getenv("TELEGRAM_TOKEN", "8827819420:AAGS-aXjMvsewGkxAJbBwt2SggWU8Opk5qc")
+ADMIN_CHAT_ID = int(os.getenv("ADMIN_ID", "8743677274"))
 EXCEL_FILE = "/app/data/diagnostics_results.xlsx"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -42,7 +39,7 @@ QUESTIONS = [
     {"s": "Операционка", "q": "Всегда ли понятно, кто за что отвечает?\n\n 💡 Есть ли случаи, когда виноватых нет?", "t": "open"},
     {"s": "Операционка", "q": "Бывает ли: ответственный назначен — результата нет — последствий тоже нет?\n\n 💡 Опишите конкретный пример", "t": "open"},
     {"s": "Операционка", "q": "Назовите цели компании на текущий год / квартал\n\n 💡 Без подготовки — то, что знаете прямо сейчас", "t": "open"},
-    {"s": "Операционка", "q": "Насколько планы соответствуют реальности выполнения?\n\n 1 — планы не выполняются, 10 — всегда в срок", "t": "scale"},
+    {"s": "Операционка", "q": "Насколько plans соответствуют реальности выполнения?\n\n 1 — планы не выполняются, 10 — всегда в срок", "t": "scale"},
     {"s": "Операционка", "q": "Насколько совещания в компании результативны?\n\n 1 — пустая трата времени, 10 — максимально результативны", "t": "scale"},
     {"s": "Операционка", "q": "После совещаний фиксируются ли решения и ответственные? Как это работает на практике?", "t": "open"},
     {"s": "Система управления", "q": "Насколько компания управляема без вашего личного участия?\n\n 1 — без меня всё остановится, 10 — работает самостоятельно", "t": "scale"},
@@ -66,92 +63,67 @@ QUESTIONS = [
 user_sessions = {}
 
 def init_excel():
-    """Создает Excel-файл с красивой шапкой в постоянной директории, если его нет"""
     os.makedirs(os.path.dirname(EXCEL_FILE), exist_ok=True)
-    if os.path.exists(EXCEL_FILE):
-        return
-        
+    if os.path.exists(EXCEL_FILE): return
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "Ответы участников"
-    
-    header_font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
-    header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-    center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    
+    ws.title = "Ответы"
+    hf, hf_fill = Font(name="Arial", size=11, bold=True, color="FFFFFF"), PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+    ca = Alignment(horizontal="center", vertical="center", wrap_text=True)
     headers = ["Дата прохождения", "ID Пользователя", "Никнейм (username)"]
-    
     for i, q in enumerate(QUESTIONS):
-        clean_text = q["q"].replace("\n\n", " ").replace("\n", " ")
-        headers.append(f"Вопрос {i+1}: {clean_text} [{q['s']}]")
-        
+        headers.append(f"Вопрос {i+1}: {q['q'].replace('\n', ' ')} [{q['s']}]")
     ws.append(headers)
-    
     for cell in ws[1]:
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = center_align
-        
+        cell.font, cell.fill, cell.alignment = hf, hf_fill, ca
     ws.row_dimensions[1].height = 35
     wb.save(EXCEL_FILE)
 
 def append_to_excel(session):
-    """Добавляет строку с анкеты пользователя в конец таблицы"""
     init_excel()
     try:
         wb = openpyxl.load_workbook(EXCEL_FILE)
         ws = wb.active
-        
-        current_time = datetime.now().strftime("%d.%m.%Y %H:%M")
-        row_data = [
-            current_time,
-            str(session["user_id"]),
-            f"@{session['username']}" if session["username"] else "—"
-        ]
-        
-        answers = session["answers"]
+        row_data = [datetime.now().strftime("%d.%m.%Y %H:%M"), str(session["user_id"]), f"@{session['username']}" if session["username"] else "—"]
         for i in range(len(QUESTIONS)):
-            if i < len(answers):
-                row_data.append(str(answers[i]))
-            else:
-                row_data.append("—")
-                
+            row_data.append(str(session["answers"][i]) if i < len(session["answers"]) else "—")
         ws.append(row_data)
-        
         for col in ws.columns:
             max_len = max(len(str(cell.value or '')) for cell in col)
-            col_letter = openpyxl.utils.get_column_letter(col.column)
-            ws.column_dimensions[col_letter].width = min(max(max_len + 3, 12), 60)
-            
+            ws.column_dimensions[openpyxl.utils.get_column_letter(col[0].column)].width = min(max(max_len + 3, 12), 60)
         wb.save(EXCEL_FILE)
-        logger.info(f"Данные пользователя {session['user_id']} сохранены в Excel.")
     except Exception as e:
-        logger.error(f"Критическая ошибка записи в Excel: {e}")
+        logger.error(f"Excel error: {e}")
 
 def get_scale_keyboard():
-    row1 = [InlineKeyboardButton(str(i), callback_data=f"scale_{i}") for i in range(1, 6)]
-    row2 = [InlineKeyboardButton(str(i), callback_data=f"scale_{i}") for i in range(6, 11)]
-    return InlineKeyboardMarkup([row1, row2])
+    return InlineKeyboardMarkup([[InlineKeyboardButton(str(i), callback_data=f"scale_{i}") for i in range(1, 6)], [InlineKeyboardButton(str(i), callback_data=f"scale_{i}") for i in range(6, 11)]])
 
 def get_choice_keyboard(opts):
-    rows = [[InlineKeyboardButton(opt, callback_data=f"choice_{i}")] for i, opt in enumerate(opts)]
-    return InlineKeyboardMarkup(rows)
+    return InlineKeyboardMarkup([[InlineKeyboardButton(opt, callback_data=f"choice_{i}")] for i, opt in enumerate(opts)])
 
 def format_report(session):
     answers = session["answers"]
-    name = answers[0] if len(answers) > 0 else "Аноним"
-    lines = [
-        "📋 ДИАГНОСТИКА — «Пластик Руси»",
-        f"👤 {name}",
-        f"🕐 {datetime.now().strftime('%d.%m.%Y %H:%M')}",
-        f"📱 @{session.get('username', '—')} | ID: {session['user_id']}",
-        "",
-    ]
+    lines = ["📋 ДИАГНОСТИКА — «Пластик Руси»", f"👤 ID: {session['user_id']}", f"🕐 {datetime.now().strftime('%d.%m.%Y %H:%M')}", ""]
     current_section = ""
     for i, q in enumerate(QUESTIONS):
         if q["s"] != current_section:
             current_section = q["s"]
-            lines.append(f"\n{'━'*28}")
-            lines.append(f"📌 {current_section.upper()}")
-            lines.append(f"{'━'*28}")
-        short_q = q["q"].split("\n")[0]
+            lines.extend([f"\n{'━'*28}", f"📌 {current_section.upper()}", f"{'━'*28}"])
+        ans = answers[i] if i < len(answers) else "—"
+        lines.append(f"\n{i+1}. {q['q'].split('\n')[0]}\n   → {ans}")
+    return "\n".join(lines)
+
+async def send_question(chat_id, context, session):
+    idx = session["current"]
+    if idx >= len(QUESTIONS):
+        await finish(chat_id, context, session)
+        return
+    q = QUESTIONS[idx]
+    progress = int((idx / len(QUESTIONS)) * 10)
+    text = f"📌 *{q['s']}*\n\n*Вопрос {idx+1} из {len(QUESTIONS)}*\n{'▓'*progress + '░'*(10-progress)}\n\n{q['q']}"
+    rm = get_scale_keyboard() if q["t"] == "scale" else (get_choice_keyboard(q["opts"]) if q["t"] == "choice" else None)
+    await context.bot.send_message(chat_id, text, reply_markup=rm, parse_mode="Markdown")
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    user_sessions[user.id] = {"current": 0, "answers": [], "user_id": user.id, "username": user.username or ""}
