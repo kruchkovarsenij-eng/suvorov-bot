@@ -67,9 +67,7 @@ user_sessions = {}
 
 def init_excel():
     """Создает Excel-файл с красивой шапкой в постоянной директории, если его нет"""
-    # Убедимся, что папка /app/data существует внутри контейнера
     os.makedirs(os.path.dirname(EXCEL_FILE), exist_ok=True)
-    
     if os.path.exists(EXCEL_FILE):
         return
         
@@ -77,21 +75,18 @@ def init_excel():
     ws = wb.active
     ws.title = "Ответы участников"
     
-    # Красивые стили для заголовков таблицы
     header_font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
     header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
     center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
     
     headers = ["Дата прохождения", "ID Пользователя", "Никнейм (username)"]
     
-    # Записываем вопросы
     for i, q in enumerate(QUESTIONS):
         clean_text = q["q"].replace("\n\n", " ").replace("\n", " ")
         headers.append(f"Вопрос {i+1}: {clean_text} [{q['s']}]")
         
     ws.append(headers)
     
-    # Стилизуем ячейки шапки
     for cell in ws[1]:
         cell.font = header_font
         cell.fill = header_fill
@@ -101,7 +96,7 @@ def init_excel():
     wb.save(EXCEL_FILE)
 
 def append_to_excel(session):
-    """Добавляет строку с анкетой пользователя в конец таблицы"""
+    """Добавляет строку с анкеты пользователя в конец таблицы"""
     init_excel()
     try:
         wb = openpyxl.load_workbook(EXCEL_FILE)
@@ -123,7 +118,6 @@ def append_to_excel(session):
                 
         ws.append(row_data)
         
-        # Автоматическое форматирование ширины колонок под размер текста
         for col in ws.columns:
             max_len = max(len(str(cell.value or '')) for cell in col)
             col_letter = openpyxl.utils.get_column_letter(col.column)
@@ -156,4 +150,8 @@ def format_report(session):
     current_section = ""
     for i, q in enumerate(QUESTIONS):
         if q["s"] != current_section:
-
+            current_section = q["s"]
+            lines.append(f"\n{'━'*28}")
+            lines.append(f"📌 {current_section.upper()}")
+            lines.append(f"{'━'*28}")
+        short_q = q["q"].split("\n")[0]
