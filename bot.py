@@ -7,7 +7,6 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill
 
-# ⚠️ ПРЯМАЯ КОНФИГУРАЦИЯ БЕЗ СИСТЕМНЫХ ПЕРЕМЕННЫХ
 TOKEN = "8827819420:AAGS-aXjMvsewGkxAJbBwt2SggWU8Opk5qc"
 ADMIN_CHAT_ID = 8743677274
 EXCEL_FILE = "/app/data/diagnostics_results.xlsx"
@@ -29,7 +28,7 @@ QUESTIONS = [
     {"s": "Состояние компании", "q": "Что является самым большим препятствием для развития компании?", "t": "open"},
     {"s": "Состояние компании", "q": "Какие ключевые угрозы вы видите для бизнеса на горизонте 1–3 лет?", "t": "open"},
     {"s": "Состояние компании", "q": "Какие возможности мы упускаем или используем недостаточно?", "t": "open"},
-    {"s": "Команда", "q": "Насколько высок уровень доверия в управленческой команде?\n\n 1 — нет доверия, 10 — полное доверие", "t": "scale"},
+    {"s": "Команда", "q": "Нашкольк высокий уровень доверия в управленческой команде?\n\n 1 — нет доверия, 10 — полное доверие", "t": "scale"},
     {"s": "Команда", "q": "Насколько открыто мы обсуждаем проблемы и конфликты?\n\n 1 — избегаем, 10 — обсуждаем открыто", "t": "scale"},
     {"s": "Команда", "q": "Оцените взаимодействие между подразделениями\n\n 1 — нет взаимодействия, 10 — отличное", "t": "scale"},
     {"s": "Команда", "q": "Что укрепляет команду, а что её ослабляет?", "t": "open"},
@@ -129,3 +128,4 @@ async def send_question(chat_id, context, session):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_sessions[user.id] = {"current": 0, "answers": [], "user_id": user.id, "username": user.username or ""}
+    await update.message.reply_text("👋 Добро пожаловать!\n\nЭто диагностика *«Менеджмент по-Суворовски»* — «Пластик Руси»\n🚀", parse_mode="Markdown")
