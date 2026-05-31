@@ -110,7 +110,6 @@ def format_report(session):
             current_section = q["s"]
             lines.extend([f"\n{'━'*28}", f"📌 {current_section.upper()}", f"{'━'*28}"])
         ans = answers[i] if i < len(answers) else "—"
-        # ИСПРАВЛЕНО: убран .split('\n'), заменяем переносы на пробелы для красивого отчета
         clean_q = q['q'].replace('\n\n', ' ').replace('\n', ' ')
         lines.append(f"\n{i+1}. {clean_q}\n   → {ans}")
     return "\n".join(lines)
@@ -125,7 +124,12 @@ async def send_question(chat_id, context, session):
     text = f"📌 *{q['s']}*\n\n*Вопрос {idx+1} из {len(QUESTIONS)}*\n{'▓'*progress + '░'*(10-progress)}\n\n{q['q']}"
     rm = get_scale_keyboard() if q["t"] == "scale" else (get_choice_keyboard(q["opts"]) if q["t"] == "choice" else None)
     await context.bot.send_message(chat_id, text, reply_markup=rm, parse_mode="Markdown")
+    # Освобождаем лок обработки только ПОСЛЕ того, как сообщение реально отправлено пользователю
+    session["lock"] = False
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    user_sessions[user.id] = {"current": 0, "answers": [], "user_id": user.id, "username": user.username or ""}
+    user_sessions[user.id] = {
+        "current": 0, 
+        "answers": [], 
+        "user_id": user.id, 
