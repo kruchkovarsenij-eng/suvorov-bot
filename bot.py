@@ -2,7 +2,6 @@ import json
 import time
 import urllib.request
 import urllib.parse
-import urllib.error
 from datetime import datetime
 
 TOKEN = "8827819420:AAGS-aXjMvsewGkxAJbBwt2SggWU8Opk5qc"
@@ -55,72 +54,87 @@ QUESTIONS = [
     {"s": "Самооценка лидера", "q": "Что вы хотите получить от диагностики и консалтинга?\n\nКонкретная метрика успеха, которую готовы зафиксировать как результат", "t": "open"},
 ]
 
+# Сессии: ключ — строка uid
+sessions = {}
+# Защита от дублей: последний обработанный update_id на пользователя
+last_update = {}
+
 SESSIONS_FILE = "/tmp/sessions.json"
 
-def load_sessions():
-    try:
-        with open(SESSIONS_FILE, "r") as f:
-            return json.load(f)
-    except Exception:
-        return {}
 
-def save_sessions(s):
+def save():
     try:
-        with open(SESSIONS_FILE, "w") as f:
-            json.dump(s, f)
+        with open(SESSIONS_FILE, "w", encoding="utf-8") as f:
+            json.dump(sessions, f, ensure_ascii=False)
     except Exception as e:
-        print(f"Save sessions error: {e}")
+        print(f"[SAVE ERROR] {e}")
 
-sessions = load_sessions()
+
+def load():
+    global sessions
+    try:
+        with open(SESSIONS_FILE, "r", encoding="utf-8") as f:
+            sessions = json.load(f)
+        print(f"[LOAD] Загружено сессий: {len(sessions)}")
+    except Exception:
+        sessions = {}
 
 
 def api_call(method, data=None):
     url = f"{API}/{method}"
-    if data:
-        payload = json.dumps(data).encode("utf-8")
-        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
-    else:
-        req = urllib.request.Request(url)
+    payload = json.dumps(data or {}).encode("utf-8")
+    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             return json.loads(resp.read())
     except Exception as e:
-        print(f"API error {method}: {e}")
+        print(f"[API ERROR] {method}: {e}")
         return None
 
 
-def send_message(chat_id, text, keyboard=None):
+def send(chat_id, text, keyboard=None):
     data = {"chat_id": chat_id, "text": text}
     if keyboard:
         data["reply_markup"] = json.dumps(keyboard)
-    return api_call("sendMessage", data)
+    api_call("sendMessage", data)
 
 
-def edit_message(chat_id, message_id, text):
-    api_call("editMessageText", {"chat_id": chat_id, "message_id": message_id, "text": text})
+def edit(chat_id, msg_id, text):
+    api_call("editMessageText", {"chat_id": chat_id, "message_id": msg_id, "text": text})
 
 
-def answer_callback(callback_id):
-    api_call("answerCallbackQuery", {"callback_query_id": callback_id})
+def scale_kb():
+    return {"inline_keyboard": [
+        [{"text": str(i), "callback_data": f"s_{i}"} for i in range(1, 6)],
+        [{"text": str(i), "callback_data": f"s_{i}"} for i in range(6, 11)],
+    ]}
 
 
-def scale_keyboard():
-    return {
-        "inline_keyboard": [
-            [{"text": str(i), "callback_data": f"s_{i}"} for i in range(1, 6)],
-            [{"text": str(i), "callback_data": f"s_{i}"} for i in range(6, 11)],
-        ]
-    }
+def ask(chat_id, uid):
+    s = sessions[uid]
+    idx = s["current"]
+    q = QUESTIONS[idx]
+    total = len(QUESTIONS)
+    prog = int((idx / total) * 10)
+    bar = "▓" * prog + "░" * (10 - prog)
+    sec = f"[ {q['s']} ]\n\n" if (idx == 0 or QUESTIONS[idx]["s"] != QUESTIONS[idx-1]["s"]) else ""
+    text = f"{sec}Вопрос {idx+1} из {total}\n{bar}\n\n{q['q']}"
+    print(f"[ASK] uid={uid} q={idx+1} current_answers={len(s['answers'])}")
+    if q["t"] == "scale":
+        send(chat_id, text, scale_kb())
+    else:
+        send(chat_id, text)
 
 
-def format_report(session):
-    answers = session["answers"]
+def format_report(uid):
+    s = sessions[uid]
+    answers = s["answers"]
     name = answers[0] if answers else "Аноним"
     lines = [
         "ДИАГНОСТИКА — «Пластик Руси»",
         f"Имя: {name}",
         f"Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}",
-        f"Username: @{session.get('username', '—')} | ID: {session['uid']}",
+        f"Username: @{s.get('username','—')} | ID: {uid}",
         "",
     ]
     cur_sec = ""
@@ -129,156 +143,162 @@ def format_report(session):
             cur_sec = q["s"]
             lines.append(f"\n=== {cur_sec.upper()} ===")
         short = q["q"].split("\n")[0]
-        ans = answers[i] if i < len(answers) and answers[i] else "—"
+        ans = answers[i] if i < len(answers) else "—"
         if q["t"] == "scale":
             try:
                 sc = int(ans)
                 bar = "█" * sc + "░" * (10 - sc)
+                lines.append(f"\n{i+1}. {short}\n   [{bar}] {ans}/10")
             except Exception:
-                bar = ""
-            lines.append(f"\n{i+1}. {short}")
-            lines.append(f"   [{bar}] {ans}/10")
+                lines.append(f"\n{i+1}. {short}\n   → {ans}")
         else:
-            lines.append(f"\n{i+1}. {short}")
-            lines.append(f"   → {ans}")
+            lines.append(f"\n{i+1}. {short}\n   → {ans}")
     return "\n".join(lines)
 
 
-def ask(chat_id, session):
-    idx = session["current"]
-    q = QUESTIONS[idx]
-    total = len(QUESTIONS)
-    prog = int((idx / total) * 10)
-    bar = "▓" * prog + "░" * (10 - prog)
-
-    sec_changed = idx == 0 or QUESTIONS[idx]["s"] != QUESTIONS[idx - 1]["s"]
-    header = f"[ {q['s']} ]\n\n" if sec_changed else ""
-    text = f"{header}Вопрос {idx+1} из {total}\n{bar}\n\n{q['q']}"
-
-    if q["t"] == "scale":
-        send_message(chat_id, text, scale_keyboard())
-    else:
-        send_message(chat_id, text)
-
-
-def finish(chat_id, session):
-    send_message(chat_id,
+def finish(chat_id, uid):
+    send(chat_id,
         "Диагностика завершена!\n\n"
         "Спасибо за честные ответы.\n"
         "Результаты отправлены консультанту.\n\n"
         "По вопросам: @suvorovez | 8-958-159-08-07 | Артемий"
     )
-    report = format_report(session)
-    chunks = [report[i:i+4000] for i in range(0, len(report), 4000)]
-    for j, chunk in enumerate(chunks):
-        prefix = "ОТЧЁТ ДИАГНОСТИКИ\n\n" if j == 0 else ""
-        send_message(ADMIN_CHAT_ID, prefix + chunk)
-    sessions.pop(session["uid"], None)
-    save_sessions(sessions)
+    report = format_report(uid)
+    for j, chunk in enumerate([report[i:i+4000] for i in range(0, len(report), 4000)]):
+        send(ADMIN_CHAT_ID, ("ОТЧЁТ ДИАГНОСТИКИ\n\n" if j == 0 else "") + chunk)
+    sessions.pop(uid, None)
+    save()
 
 
-def handle_update(update):
-    # Обычное сообщение
-    if "message" in update:
-        msg = update["message"]
-        chat_id = msg["chat"]["id"]
-        user = msg.get("from", {})
-        uid = user.get("id")
-        text = msg.get("text", "").strip()
+def handle_message(msg):
+    chat_id = msg["chat"]["id"]
+    user = msg.get("from", {})
+    uid = str(user.get("id", ""))
+    text = msg.get("text", "").strip()
+    msg_id = msg.get("message_id", 0)
 
-        if text == "/start":
-            sessions[uid] = {"current": 0, "answers": [], "uid": uid, "username": user.get("username", "")}
-            save_sessions(sessions)
-            send_message(chat_id,
-                "Добро пожаловать!\n\n"
-                "Диагностика для собственника\n"
-                "«Менеджмент по-Суворовски» — «Пластик Руси»\n\n"
-                "43 вопроса о стратегии, команде и вас как лидере.\n"
-                "Займёт 15–25 минут.\n\n"
-                "Отвечайте честно. Поехали!"
-            )
-            ask(chat_id, sessions[uid])
-            return
+    # Защита от дублей: игнорируем если уже видели этот message_id
+    if last_update.get(uid) == msg_id:
+        print(f"[SKIP DUPLICATE] uid={uid} msg_id={msg_id}")
+        return
+    last_update[uid] = msg_id
 
-        if text == "/status" and uid == ADMIN_CHAT_ID:
-            if not sessions:
-                send_message(chat_id, "Активных сессий нет.")
-            else:
-                lines = [f"Активные сессии: {len(sessions)}"]
-                for s in sessions.values():
-                    lines.append(f"@{s.get('username','—')} — вопрос {s['current']+1}/43")
-                send_message(chat_id, "\n".join(lines))
-            return
+    print(f"[MSG] uid={uid} text={repr(text[:50])} msg_id={msg_id}")
 
-        if uid not in sessions:
-            send_message(chat_id, "Введите /start чтобы начать диагностику.")
-            return
+    if text == "/start":
+        sessions[uid] = {"current": 0, "answers": [], "username": user.get("username", "")}
+        save()
+        send(chat_id,
+            "Добро пожаловать!\n\n"
+            "Диагностика для собственника\n"
+            "«Менеджмент по-Суворовски» — «Пластик Руси»\n\n"
+            "43 вопроса о стратегии, команде и вас как лидере.\n"
+            "Займёт 15–25 минут. Поехали!"
+        )
+        ask(chat_id, uid)
+        return
 
-        session = sessions[uid]
-        if not text:
-            return
-
-        session["answers"].append(text)
-        session["current"] += 1
-        save_sessions(sessions)
-
-        if session["current"] >= len(QUESTIONS):
-            finish(chat_id, session)
+    if text == "/status" and uid == str(ADMIN_CHAT_ID):
+        if not sessions:
+            send(chat_id, "Активных сессий нет.")
         else:
-            ask(chat_id, session)
+            lines = [f"Активных сессий: {len(sessions)}"]
+            for k, s in sessions.items():
+                lines.append(f"@{s.get('username','—')} — вопрос {s['current']+1}/43")
+            send(chat_id, "\n".join(lines))
+        return
 
-    # Нажатие кнопки
-    elif "callback_query" in update:
-        cb = update["callback_query"]
-        uid = cb["from"]["id"]
-        chat_id = cb["message"]["chat"]["id"]
-        msg_id = cb["message"]["message_id"]
-        data = cb.get("data", "")
-        answer_callback(cb["id"])
+    if uid not in sessions:
+        send(chat_id, "Введите /start чтобы начать диагностику.")
+        return
 
-        if uid not in sessions:
-            return
+    s = sessions[uid]
+    idx = s["current"]
+    q = QUESTIONS[idx]
 
-        session = sessions[uid]
-        idx = session["current"]
-        q = QUESTIONS[idx]
+    if q["t"] == "scale":
+        send(chat_id, "Пожалуйста, выберите оценку кнопкой выше.")
+        return
 
-        if data.startswith("s_") and q["t"] == "scale":
-            val = data[2:]
-            short = q["q"].split("\n")[0]
-            edit_message(chat_id, msg_id, f"✓ {short}\n→ {val}/10")
-            session["answers"].append(val)
-            session["current"] += 1
-            save_sessions(sessions)
+    if not text:
+        return
 
-            if session["current"] >= len(QUESTIONS):
-                finish(chat_id, session)
-            else:
-                ask(chat_id, session)
+    print(f"[ANSWER] uid={uid} q={idx+1} answer={repr(text[:40])}")
+    s["answers"].append(text)
+    s["current"] += 1
+    save()
+
+    if s["current"] >= len(QUESTIONS):
+        finish(chat_id, uid)
+    else:
+        ask(chat_id, uid)
+
+
+def handle_callback(cb):
+    uid = str(cb["from"]["id"])
+    chat_id = cb["message"]["chat"]["id"]
+    msg_id = cb["message"]["message_id"]
+    data = cb.get("data", "")
+    cb_id = cb["id"]
+
+    api_call("answerCallbackQuery", {"callback_query_id": cb_id})
+
+    # Защита от дублей
+    cb_key = f"cb_{uid}_{msg_id}"
+    if last_update.get(cb_key) == data:
+        print(f"[SKIP DUPLICATE CB] uid={uid} data={data}")
+        return
+    last_update[cb_key] = data
+
+    print(f"[CB] uid={uid} data={data}")
+
+    if uid not in sessions:
+        return
+
+    s = sessions[uid]
+    idx = s["current"]
+    q = QUESTIONS[idx]
+
+    if data.startswith("s_") and q["t"] == "scale":
+        val = data[2:]
+        short = q["q"].split("\n")[0]
+        edit(chat_id, msg_id, f"✓ {short}\n→ {val}/10")
+        print(f"[SCALE ANSWER] uid={uid} q={idx+1} val={val}")
+        s["answers"].append(val)
+        s["current"] += 1
+        save()
+
+        if s["current"] >= len(QUESTIONS):
+            finish(chat_id, uid)
+        else:
+            ask(chat_id, uid)
 
 
 def main():
+    load()
     print("Бот запущен ✅")
     offset = None
     while True:
         try:
-            params = {"timeout": 30}
+            params = {"timeout": 30, "allowed_updates": ["message", "callback_query"]}
             if offset:
                 params["offset"] = offset
             url = f"{API}/getUpdates?" + urllib.parse.urlencode(params)
-            req = urllib.request.Request(url)
-            with urllib.request.urlopen(req, timeout=35) as resp:
+            with urllib.request.urlopen(url, timeout=35) as resp:
                 data = json.loads(resp.read())
             if data.get("ok"):
                 for update in data.get("result", []):
                     offset = update["update_id"] + 1
                     try:
-                        handle_update(update)
+                        if "message" in update:
+                            handle_message(update["message"])
+                        elif "callback_query" in update:
+                            handle_callback(update["callback_query"])
                     except Exception as e:
-                        print(f"Error handling update: {e}")
+                        print(f"[HANDLER ERROR] {e}")
         except Exception as e:
-            print(f"Polling error: {e}")
-            time.sleep(5)
+            print(f"[POLL ERROR] {e}")
+            time.sleep(3)
 
 
 if __name__ == "__main__":
