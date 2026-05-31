@@ -7,8 +7,9 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill
 
-TOKEN = os.getenv("TELEGRAM_TOKEN", "8827819420:AAGS-aXjMvsewGkxAJbBwt2SggWU8Opk5qc")
-ADMIN_CHAT_ID = int(os.getenv("ADMIN_ID", "8743677274"))
+# ⚠️ ПРЯМАЯ КОНФИГУРАЦИЯ БЕЗ СИСТЕМНЫХ ПЕРЕМЕННЫХ
+TOKEN = "8827819420:AAGS-aXjMvsewGkxAJbBwt2SggWU8Opk5qc"
+ADMIN_CHAT_ID = 8743677274
 EXCEL_FILE = "/app/data/diagnostics_results.xlsx"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -39,7 +40,7 @@ QUESTIONS = [
     {"s": "Операционка", "q": "Всегда ли понятно, кто за что отвечает?\n\n 💡 Есть ли случаи, когда виноватых нет?", "t": "open"},
     {"s": "Операционка", "q": "Бывает ли: ответственный назначен — результата нет — последствий тоже нет?\n\n 💡 Опишите конкретный пример", "t": "open"},
     {"s": "Операционка", "q": "Назовите цели компании на текущий год / квартал\n\n 💡 Без подготовки — то, что знаете прямо сейчас", "t": "open"},
-    {"s": "Операционка", "q": "Насколько plans соответствуют реальности выполнения?\n\n 1 — планы не выполняются, 10 — всегда в срок", "t": "scale"},
+    {"s": "Операционка", "q": "Насколько планы соответствуют реальности выполнения?\n\n 1 — планы не выполняются, 10 — всегда в срок", "t": "scale"},
     {"s": "Операционка", "q": "Насколько совещания в компании результативны?\n\n 1 — пустая трата времени, 10 — максимально результативны", "t": "scale"},
     {"s": "Операционка", "q": "После совещаний фиксируются ли решения и ответственные? Как это работает на практике?", "t": "open"},
     {"s": "Система управления", "q": "Насколько компания управляема без вашего личного участия?\n\n 1 — без меня всё остановится, 10 — работает самостоятельно", "t": "scale"},
@@ -74,9 +75,9 @@ def init_excel():
     for i, q in enumerate(QUESTIONS):
         headers.append(f"Вопрос {i+1}: {q['q'].replace('\n', ' ')} [{q['s']}]")
     ws.append(headers)
-    for cell in ws[1]:
+    for cell in ws:
         cell.font, cell.fill, cell.alignment = hf, hf_fill, ca
-    ws.row_dimensions[1].height = 35
+    ws.row_dimensions.height = 35
     wb.save(EXCEL_FILE)
 
 def append_to_excel(session):
@@ -90,7 +91,7 @@ def append_to_excel(session):
         ws.append(row_data)
         for col in ws.columns:
             max_len = max(len(str(cell.value or '')) for cell in col)
-            ws.column_dimensions[openpyxl.utils.get_column_letter(col[0].column)].width = min(max(max_len + 3, 12), 60)
+            ws.column_dimensions[openpyxl.utils.get_column_letter(col.column)].width = min(max(max_len + 3, 12), 60)
         wb.save(EXCEL_FILE)
     except Exception as e:
         logger.error(f"Excel error: {e}")
@@ -110,7 +111,8 @@ def format_report(session):
             current_section = q["s"]
             lines.extend([f"\n{'━'*28}", f"📌 {current_section.upper()}", f"{'━'*28}"])
         ans = answers[i] if i < len(answers) else "—"
-        lines.append(f"\n{i+1}. {q['q'].split('\n')[0]}\n   → {ans}")
+        clean_q = q['q'].split('\n')[0]
+        lines.append(f"\n{i+1}. {clean_q}\n   → {ans}")
     return "\n".join(lines)
 
 async def send_question(chat_id, context, session):
