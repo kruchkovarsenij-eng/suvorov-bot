@@ -124,7 +124,6 @@ async def send_question(chat_id, context, session):
     text = f"📌 *{q['s']}*\n\n*Вопрос {idx+1} из {len(QUESTIONS)}*\n{'▓'*progress + '░'*(10-progress)}\n\n{q['q']}"
     rm = get_scale_keyboard() if q["t"] == "scale" else (get_choice_keyboard(q["opts"]) if q["t"] == "choice" else None)
     await context.bot.send_message(chat_id, text, reply_markup=rm, parse_mode="Markdown")
-    # Освобождаем лок обработки только ПОСЛЕ того, как сообщение реально отправлено пользователю
     session["lock"] = False
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -133,3 +132,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "current": 0, 
         "answers": [], 
         "user_id": user.id, 
+        "username": user.username or "",
+        "lock": False
+    }
