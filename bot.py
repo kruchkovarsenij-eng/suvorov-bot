@@ -7,10 +7,12 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill
 
-# ⚠️ ВНИМАНИЕ: Обязательно вставьте ваш токен бота и ID чата администратора
+# ⚠️ КОНФИГУРАЦИЯ БОТА
 TOKEN = "8827819420:AAGS-aXjMvsewGkxAJbBwt2SggWU8Opk5qc"
 ADMIN_CHAT_ID = 8743677274
-EXCEL_FILE = "diagnostics_results.xlsx"
+
+# 💾 Путь к Excel-файлу строго на подключенном диске Railway Volume (/app/data)
+EXCEL_FILE = "/app/data/diagnostics_results.xlsx"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -64,40 +66,42 @@ QUESTIONS = [
 user_sessions = {}
 
 def init_excel():
-    """Создает Excel-файл с шапкой, если он еще не существует"""
+    """Создает Excel-файл с красивой шапкой в постоянной директории, если его нет"""
+    # Убедимся, что папка /app/data существует внутри контейнера
+    os.makedirs(os.path.dirname(EXCEL_FILE), exist_ok=True)
+    
     if os.path.exists(EXCEL_FILE):
         return
         
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "Результаты"
+    ws.title = "Ответы участников"
     
-    # Стилизация шапки
+    # Красивые стили для заголовков таблицы
     header_font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
-    header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+    header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
     center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
     
-    # Формируем столбцы метаданных
-    headers = ["Дата заполнения", "Telegram ID", "Никнейм"]
+    headers = ["Дата прохождения", "ID Пользователя", "Никнейм (username)"]
     
-    # Добавляем вопросы в шапку таблицы
+    # Записываем вопросы
     for i, q in enumerate(QUESTIONS):
-        clean_q = q["q"].replace("\n\n", " ").replace("\n", " ")
-        headers.append(f"Вопрос {i+1}: {clean_q} ({q['s']})")
+        clean_text = q["q"].replace("\n\n", " ").replace("\n", " ")
+        headers.append(f"Вопрос {i+1}: {clean_text} [{q['s']}]")
         
     ws.append(headers)
     
-    # Применяем стили к первой строке
+    # Стилизуем ячейки шапки
     for cell in ws[1]:
         cell.font = header_font
         cell.fill = header_fill
         cell.alignment = center_align
         
-    ws.row_dimensions[1].height = 40
+    ws.row_dimensions[1].height = 35
     wb.save(EXCEL_FILE)
 
 def append_to_excel(session):
-    """Добавляет одну анкету пользователя в конец таблицы"""
+    """Добавляет строку с анкетой пользователя в конец таблицы"""
     init_excel()
     try:
         wb = openpyxl.load_workbook(EXCEL_FILE)
@@ -110,7 +114,6 @@ def append_to_excel(session):
             f"@{session['username']}" if session["username"] else "—"
         ]
         
-        # Добавляем ответы
         answers = session["answers"]
         for i in range(len(QUESTIONS)):
             if i < len(answers):
@@ -120,16 +123,16 @@ def append_to_excel(session):
                 
         ws.append(row_data)
         
-        # Автоматическое выравнивание ширины колонок для читаемости
+        # Автоматическое форматирование ширины колонок под размер текста
         for col in ws.columns:
             max_len = max(len(str(cell.value or '')) for cell in col)
-            col_letter = openpyxl.utils.get_column_letter(col[0].column)
-            ws.column_dimensions[col_letter].width = min(max(max_len + 3, 12), 50)
+            col_letter = openpyxl.utils.get_column_letter(col.column)
+            ws.column_dimensions[col_letter].width = min(max(max_len + 3, 12), 60)
             
         wb.save(EXCEL_FILE)
-        logger.info(f"Анкета пользователя {session['user_id']} успешно сохранена в Excel.")
+        logger.info(f"Данные пользователя {session['user_id']} сохранены в Excel.")
     except Exception as e:
-        logger.error(f"Ошибка при сохранении в Excel: {e}")
+        logger.error(f"Критическая ошибка записи в Excel: {e}")
 
 def get_scale_keyboard():
     row1 = [InlineKeyboardButton(str(i), callback_data=f"scale_{i}") for i in range(1, 6)]
@@ -153,7 +156,4 @@ def format_report(session):
     current_section = ""
     for i, q in enumerate(QUESTIONS):
         if q["s"] != current_section:
-            current_section = q["s"]
-            lines.append(f"\n{'━'*28}")
-            lines.append(f"📌 {current_section.upper()}")
-            lines.append(f"{'━'*28}")
+
