@@ -1,13 +1,16 @@
 import logging
 import asyncio
+import os
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
+import openpyxl
+from openpyxl.styles import Font, Alignment, PatternFill
 
-# ⚠️ ВНИМАНИЕ: Никогда не пишите токен прямо в коде! 
-# Замените строку ниже на ваш реальный токен "8827819420:AAGS-..." или передавайте через ENV
+# ⚠️ ВНИМАНИЕ: Обязательно вставьте ваш токен бота и ID чата администратора
 TOKEN = "8827819420:AAGS-aXjMvsewGkxAJbBwt2SggWU8Opk5qc"
 ADMIN_CHAT_ID = 8743677274
+EXCEL_FILE = "diagnostics_results.xlsx"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -60,6 +63,74 @@ QUESTIONS = [
 
 user_sessions = {}
 
+def init_excel():
+    """Создает Excel-файл с шапкой, если он еще не существует"""
+    if os.path.exists(EXCEL_FILE):
+        return
+        
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Результаты"
+    
+    # Стилизация шапки
+    header_font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+    center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    
+    # Формируем столбцы метаданных
+    headers = ["Дата заполнения", "Telegram ID", "Никнейм"]
+    
+    # Добавляем вопросы в шапку таблицы
+    for i, q in enumerate(QUESTIONS):
+        clean_q = q["q"].replace("\n\n", " ").replace("\n", " ")
+        headers.append(f"Вопрос {i+1}: {clean_q} ({q['s']})")
+        
+    ws.append(headers)
+    
+    # Применяем стили к первой строке
+    for cell in ws[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = center_align
+        
+    ws.row_dimensions[1].height = 40
+    wb.save(EXCEL_FILE)
+
+def append_to_excel(session):
+    """Добавляет одну анкету пользователя в конец таблицы"""
+    init_excel()
+    try:
+        wb = openpyxl.load_workbook(EXCEL_FILE)
+        ws = wb.active
+        
+        current_time = datetime.now().strftime("%d.%m.%Y %H:%M")
+        row_data = [
+            current_time,
+            str(session["user_id"]),
+            f"@{session['username']}" if session["username"] else "—"
+        ]
+        
+        # Добавляем ответы
+        answers = session["answers"]
+        for i in range(len(QUESTIONS)):
+            if i < len(answers):
+                row_data.append(str(answers[i]))
+            else:
+                row_data.append("—")
+                
+        ws.append(row_data)
+        
+        # Автоматическое выравнивание ширины колонок для читаемости
+        for col in ws.columns:
+            max_len = max(len(str(cell.value or '')) for cell in col)
+            col_letter = openpyxl.utils.get_column_letter(col[0].column)
+            ws.column_dimensions[col_letter].width = min(max(max_len + 3, 12), 50)
+            
+        wb.save(EXCEL_FILE)
+        logger.info(f"Анкета пользователя {session['user_id']} успешно сохранена в Excel.")
+    except Exception as e:
+        logger.error(f"Ошибка при сохранении в Excel: {e}")
+
 def get_scale_keyboard():
     row1 = [InlineKeyboardButton(str(i), callback_data=f"scale_{i}") for i in range(1, 6)]
     row2 = [InlineKeyboardButton(str(i), callback_data=f"scale_{i}") for i in range(6, 11)]
@@ -71,7 +142,7 @@ def get_choice_keyboard(opts):
 
 def format_report(session):
     answers = session["answers"]
-    name = answers[0] if answers else "Аноним"
+    name = answers[0] if len(answers) > 0 else "Аноним"
     lines = [
         "📋 ДИАГНОСТИКА — «Пластик Руси»",
         f"👤 {name}",
@@ -86,64 +157,3 @@ def format_report(session):
             lines.append(f"\n{'━'*28}")
             lines.append(f"📌 {current_section.upper()}")
             lines.append(f"{'━'*28}")
-        
-        short_q = q["q"].split("\n")[0]
-        ans = answers[i] if i < len(answers) and answers[i] else "—"
-        if q["t"] == "scale":
-            try:
-                score = int(ans)
-                bar = "█" * score + "░" * (10 - score)
-                lines.append(f"\n{i+1}. {short_q}")
-                lines.append(f"   [{bar}] {ans}/10")
-            except Exception:
-                lines.append(f"\n{i+1}. {short_q}\n   → {ans}")
-        else:
-            lines.append(f"\n{i+1}. {short_q}")
-            lines.append(f"   → {ans}")
-    return "\n".join(lines)
-
-async def send_question(chat_id, context, session):
-    idx = session["current"]
-    if idx >= len(QUESTIONS):
-        await finish(chat_id, context, session)
-        return
-        
-    q = QUESTIONS[idx]
-    total = len(QUESTIONS)
-    progress = int((idx / total) * 10)
-    bar = "▓" * progress + "░" * (10 - progress)
-    
-    section_changed = idx == 0 or QUESTIONS[idx]["s"] != QUESTIONS[idx - 1]["s"]
-    header = f"📌 *{q['s']}*\n\n" if section_changed else ""
-    text = f"{header}*Вопрос {idx+1} из {total}*\n{bar}\n\n{q['q']}"
-    
-    if q["t"] == "scale":
-        await context.bot.send_message(chat_id, text, reply_markup=get_scale_keyboard(), parse_mode="Markdown")
-    elif q["t"] == "choice":
-        await context.bot.send_message(chat_id, text, reply_markup=get_choice_keyboard(q["opts"]), parse_mode="Markdown")
-    else:
-        await context.bot.send_message(chat_id, text, parse_mode="Markdown")
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    user_sessions[user.id] = {
-        "current": 0,
-        "answers": [],
-        "user_id": user.id,
-        "username": user.username or "",
-    }
-    await update.message.reply_text(
-        "👋 Добро пожаловать!\n\n"
-        "Это диагностика для собственника\n"
-        "*«Менеджмент по-Суворовски»* — «Пластик Руси»\n\n"
-        "📝 *43 вопроса* о стратегии, команде и вас как лидере.\n"
-        "⏱ Займёт 15–25 минут.\n\n"
-        "Отвечайте честно — это только для вас и консультанта.\n\n"
-        "Поехали! 🚀",
-        parse_mode="Markdown"
-    )
-    await asyncio.sleep(0.5)
-    await send_question(update.effective_chat.id, context, user_sessions[user.id])
-
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
