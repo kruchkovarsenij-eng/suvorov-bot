@@ -4,9 +4,9 @@ import logging
 import asyncio
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
+from telegram.ext import Application, CallbackQueryHandler, MessageHandler, filters
 
-# Принудительно отключаем буферизацию вывода логов для Railway
+# Отключаем буферизацию логов для Railway
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 
@@ -123,15 +123,16 @@ def format_report(session):
         lines.append(f"\n{i+1}. {clean_q}\n   → {ans}")
     return "\n".join(lines)
 
-async def send_question(chat_id, context, session):
+async def send_question(chat_id, bot_instance, session):
     idx = session["current"]
     if idx >= len(QUESTIONS):
-        await finish(chat_id, context, session)
+        # Передаем заглушку вместо контекста в метод финиша
+        await finish(chat_id, bot_instance, session)
         return
     q = QUESTIONS[idx]
     progress = int((idx / len(QUESTIONS)) * 10)
     text = f"📌 *{q['s']}*\n\n*Вопрос {idx+1} из {len(QUESTIONS)}*\n{'▓'*progress + '░'*(10-progress)}\n\n{q['q']}"
     rm = get_scale_keyboard() if q["t"] == "scale" else (get_choice_keyboard(q["opts"]) if q["t"] == "choice" else None)
-    await context.bot.send_message(chat_id, text, reply_markup=rm, parse_mode="Markdown")
+    await bot_instance.send_message(chat_id, text, reply_markup=rm, parse_mode="Markdown")
     session["lock"] = False
 
