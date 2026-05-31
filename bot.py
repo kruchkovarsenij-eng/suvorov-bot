@@ -1,16 +1,19 @@
 import sys
 import os
-import logging
-import asyncio
-from datetime import datetime
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
-from telegram.ext import Application, CallbackQueryHandler, MessageHandler, filters
 
-# Отключаем буферизацию логов для Railway
+# Сразу открываем буфер логов на максимум
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 
-print("--- [DOCKER START] СТАРТ ЧИСТОГО ЯДРА БОТА ---", flush=True)
+print("--- [DOCKER START] ПРЯМАЯ ИНИЦИАЛИЗАЦИЯ ИНТЕРПРЕТАТОРА ---", flush=True)
+
+import logging
+import asyncio
+from datetime import datetime
+
+print("--- [IMPORTING] Загрузка библиотек Telegram API... ---", flush=True)
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
+from telegram.ext import Application, CallbackQueryHandler, MessageHandler, ContextTypes, filters
 
 TOKEN = "8827819420:AAGS-aXjMvsewGkxAJbBwt2SggWU8Opk5qc"
 ADMIN_CHAT_ID = 8743677274
@@ -126,7 +129,6 @@ def format_report(session):
 async def send_question(chat_id, bot_instance, session):
     idx = session["current"]
     if idx >= len(QUESTIONS):
-        # Передаем заглушку вместо контекста в метод финиша
         await finish(chat_id, bot_instance, session)
         return
     q = QUESTIONS[idx]
@@ -134,5 +136,4 @@ async def send_question(chat_id, bot_instance, session):
     text = f"📌 *{q['s']}*\n\n*Вопрос {idx+1} из {len(QUESTIONS)}*\n{'▓'*progress + '░'*(10-progress)}\n\n{q['q']}"
     rm = get_scale_keyboard() if q["t"] == "scale" else (get_choice_keyboard(q["opts"]) if q["t"] == "choice" else None)
     await bot_instance.send_message(chat_id, text, reply_markup=rm, parse_mode="Markdown")
-    session["lock"] = False
 
