@@ -129,4 +129,3 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_sessions[user.id] = {"current": 0, "answers": [], "user_id": user.id, "username": user.username or ""}
     await update.message.reply_text("👋 Добро пожаловать!\n\nЭто диагностика *«Менеджмент по-Суворовски»* — «Пластик Руси»\n🚀", parse_mode="Markdown")
-
