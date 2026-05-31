@@ -6,7 +6,7 @@ from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 
-# Моментальный вывод логов для Railway
+# Принудительно отключаем буферизацию вывода логов для Railway
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 
@@ -135,4 +135,3 @@ async def send_question(chat_id, context, session):
     await context.bot.send_message(chat_id, text, reply_markup=rm, parse_mode="Markdown")
     session["lock"] = False
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
