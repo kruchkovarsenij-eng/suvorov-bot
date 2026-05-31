@@ -5,9 +5,12 @@ import asyncio
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
+from telegram.request import HTTPXRequest
 
+# Отключаем буферизацию вывода логов для Railway
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
+
 print("--- [DOCKER START] ИНИЦИАЛИЗАЦИЯ СКРИПТА ---", flush=True)
 
 TOKEN = "8827819420:AAGS-aXjMvsewGkxAJbBwt2SggWU8Opk5qc"
@@ -133,5 +136,3 @@ async def send_question(chat_id, context, session):
     await context.bot.send_message(chat_id, text, reply_markup=rm, parse_mode="Markdown")
     session["lock"] = False
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
