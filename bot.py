@@ -1,6 +1,7 @@
 import logging
 import asyncio
 import os
+import sys
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
@@ -10,6 +11,10 @@ from openpyxl.styles import Font, Alignment, PatternFill
 TOKEN = "8827819420:AAGS-aXjMvsewGkxAJbBwt2SggWU8Opk5qc"
 ADMIN_CHAT_ID = 8743677274
 EXCEL_FILE = "/app/data/diagnostics_results.xlsx"
+
+# Включаем моментальный вывод принтов в консоль Railway
+sys.stdout.reconfigure(line_buffering=True)
+sys.stderr.reconfigure(line_buffering=True)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -128,10 +133,3 @@ async def send_question(chat_id, context, session):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    user_sessions[user.id] = {
-        "current": 0, 
-        "answers": [], 
-        "user_id": user.id, 
-        "username": user.username or "",
-        "lock": False
-    }
