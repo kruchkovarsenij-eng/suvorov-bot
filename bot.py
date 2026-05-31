@@ -1,11 +1,9 @@
 import sys
 import os
 
-# Сразу включаем вывод логов без буферизации
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
-
-print("--- [DOCKER START] СКРИПТ УСПЕШНО ЗАПУЩЕН ---", flush=True)
+print("--- [DOCKER START] ИНИЦИАЛИЗАЦИЯ СКРИПТА ---", flush=True)
 
 import logging
 import asyncio
@@ -137,3 +135,4 @@ async def send_question(chat_id, context, session):
     session["lock"] = False
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
