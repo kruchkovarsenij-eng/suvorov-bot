@@ -5,7 +5,7 @@ from datetime import datetime
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# Моментальный вывод логов в консоль Railway
+# Принудительно отключаем буферизацию вывода логов ядра Python для Railway
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 
@@ -16,6 +16,11 @@ ADMIN_CHAT_ID = 8743677274
 EXCEL_FILE = "diagnostics_results.xlsx"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Настраиваем сетевой тайм-аут подключения, чтобы Python 3.13 не зависал в дедлоке
+telebot.apihelper.CONNECT_TIMEOUT = 10
+telebot.apihelper.READ_TIMEOUT = 10
+
 bot = telebot.TeleBot(TOKEN, parse_mode="Markdown")
 
 QUESTIONS = [
@@ -141,11 +146,3 @@ def send_question(chat_id, session):
     if q["t"] == "scale":
         bot.send_message(chat_id, text, reply_markup=get_scale_keyboard())
     elif q["t"] == "choice":
-        bot.send_message(chat_id, text, reply_markup=get_choice_keyboard(q["opts"]))
-    else:
-        bot.send_message(chat_id, text)
-    session["lock"] = False
-
-@bot.message_handler(commands=['start'])
-def start_command(message):
-    user = message.from_user
