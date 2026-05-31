@@ -1,26 +1,22 @@
-import sys
 import os
+import sys
+import logging
+from datetime import datetime
+import telebot
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# Сразу открываем буфер логов на максимум
+# Моментальный вывод логов в консоль Railway
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 
-print("--- [DOCKER START] ПРЯМАЯ ИНИЦИАЛИЗАЦИЯ ИНТЕРПРЕТАТОРА ---", flush=True)
-
-import logging
-import asyncio
-from datetime import datetime
-
-print("--- [IMPORTING] Загрузка библиотек Telegram API... ---", flush=True)
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
-from telegram.ext import Application, CallbackQueryHandler, MessageHandler, ContextTypes, filters
+print("--- [DOCKER START] ЗАПУСК СВЕРХЛЕГКОГО ЯДРА БОТА ---", flush=True)
 
 TOKEN = "8827819420:AAGS-aXjMvsewGkxAJbBwt2SggWU8Opk5qc"
 ADMIN_CHAT_ID = 8743677274
 EXCEL_FILE = "/app/data/diagnostics_results.xlsx"
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+bot = telebot.TeleBot(TOKEN, parse_mode="Markdown")
 
 QUESTIONS = [
     {"s": "Личные данные", "q": "Как вас зовут? (ФИО)", "t": "open"},
@@ -108,10 +104,18 @@ def append_to_excel(session):
         logger.error(f"Excel error: {e}")
 
 def get_scale_keyboard():
-    return InlineKeyboardMarkup([[InlineKeyboardButton(str(i), callback_data=f"scale_{i}") for i in range(1, 6)], [InlineKeyboardButton(str(i), callback_data=f"scale_{i}") for i in range(6, 11)]])
+    markup = InlineKeyboardMarkup(row_width=5)
+    row1 = [InlineKeyboardButton(str(i), callback_data=f"scale_{i}") for i in range(1, 6)]
+    row2 = [InlineKeyboardButton(str(i), callback_data=f"scale_{i}") for i in range(6, 11)]
+    markup.add(*row1)
+    markup.add(*row2)
+    return markup
 
 def get_choice_keyboard(opts):
-    return InlineKeyboardMarkup([[InlineKeyboardButton(opt, callback_data=f"choice_{i}")] for i, opt in enumerate(opts)])
+    markup = InlineKeyboardMarkup()
+    for i, opt in enumerate(opts):
+        markup.add(InlineKeyboardButton(opt, callback_data=f"choice_{i}"))
+    return markup
 
 def format_report(session):
     answers = session["answers"]
@@ -126,14 +130,20 @@ def format_report(session):
         lines.append(f"\n{i+1}. {clean_q}\n   → {ans}")
     return "\n".join(lines)
 
-async def send_question(chat_id, bot_instance, session):
+def send_question(chat_id, session):
     idx = session["current"]
     if idx >= len(QUESTIONS):
-        await finish(chat_id, bot_instance, session)
+        finish(chat_id, session)
         return
     q = QUESTIONS[idx]
     progress = int((idx / len(QUESTIONS)) * 10)
     text = f"📌 *{q['s']}*\n\n*Вопрос {idx+1} из {len(QUESTIONS)}*\n{'▓'*progress + '░'*(10-progress)}\n\n{q['q']}"
-    rm = get_scale_keyboard() if q["t"] == "scale" else (get_choice_keyboard(q["opts"]) if q["t"] == "choice" else None)
-    await bot_instance.send_message(chat_id, text, reply_markup=rm, parse_mode="Markdown")
+    
+    if q["t"] == "scale":
+        bot.send_message(chat_id, text, reply_markup=get_scale_keyboard())
+    elif q["t"] == "choice":
+        bot.send_message(chat_id, text, reply_markup=get_choice_keyboard(q["opts"]))
+    else:
+        bot.send_message(chat_id, text)
+    session["lock"] = False
 
