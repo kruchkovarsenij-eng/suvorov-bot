@@ -148,4 +148,4 @@ def send_question(chat_id, session):
     bot.send_message(chat_id, text, reply_markup=reply_markup)
     session["lock"] = False
 
-@bot.message_handler(commands=['start'])
+def finish(chat_id, session):
