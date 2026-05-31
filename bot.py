@@ -9,11 +9,13 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 
-print("--- [DOCKER START] ЗАПУСК СВЕРХЛЕГКОГО ЯДРА БОТА ---", flush=True)
+print("--- [DOCKER START] ЗАПУСК НАДЕЖНОГО ЯДРА БОТА ---", flush=True)
 
 TOKEN = "8827819420:AAGS-aXjMvsewGkxAJbBwt2SggWU8Opk5qc"
 ADMIN_CHAT_ID = 8743677274
-EXCEL_FILE = "/app/data/diagnostics_results.xlsx"
+
+# 🔥 ИСПРАВЛЕНО: Сохраняем файл прямо в корень папки бота, где всегда есть права на запись!
+EXCEL_FILE = "diagnostics_results.xlsx"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 bot = telebot.TeleBot(TOKEN, parse_mode="Markdown")
@@ -67,7 +69,6 @@ QUESTIONS = [
 user_sessions = {}
 
 def init_excel():
-    os.makedirs(os.path.dirname(EXCEL_FILE), exist_ok=True)
     if os.path.exists(EXCEL_FILE): return
     import openpyxl
     from openpyxl.styles import Font, Alignment, PatternFill
