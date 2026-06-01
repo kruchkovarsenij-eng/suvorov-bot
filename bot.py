@@ -5,6 +5,7 @@ import asyncio
 import logging
 from datetime import datetime
 
+# ---------- Ранний вывод и автоустановка ----------
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 print("--- [DOCKER START] ИНИЦИАЛИЗАЦИЯ СИСТЕМНОГО ОКРУЖЕНИЯ ---", flush=True)
@@ -19,39 +20,42 @@ except ModuleNotFoundError:
     print("Установка успешно завершена! ✅", flush=True)
 
 from aiogram import Bot, Dispatcher, F, Router
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.filters import CommandStart
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
+from aiogram.filters import CommandStart, Command
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler
 from aiohttp import web
 
 print("--- [DOCKER START] ЗАПУСК AIOGRAM ЯДРА ---", flush=True)
 
+# ---------- Конфигурация ----------
 TOKEN = "8959504034:AAFTvRop6ApDFX6dCnngx50LmEye_WtZ6C4"
 ADMIN_CHAT_ID = 8743677274
-EXCEL_FILE = "diagnostics_results.xlsx"
 
-# Настройки вебхука
+# Папка и файл для постоянного хранения (том Railway)
+DATA_DIR = "data"
+EXCEL_FILE = os.path.join(DATA_DIR, "diagnostics_results.xlsx")
+
 WEBHOOK_HOST = os.getenv("WEBHOOK_HOST", "https://suvorov-bot-production.up.railway.app")
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 WEBHOOK_PORT = int(os.getenv("PORT", 8080))
-
-# Переменная для принудительного использования polling (задай USE_POLLING=true в Railway Variables)
 USE_POLLING = os.getenv("USE_POLLING", "false").lower() == "true"
 
+# ---------- Логирование ----------
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-# Включаем логирование всех HTTP‑запросов (чтобы видеть, приходят ли сообщения от Telegram)
 logging.getLogger('aiohttp.access').setLevel(logging.DEBUG)
 
+# ---------- Бот и диспатчер ----------
 session = AiohttpSession()
 bot = Bot(token=TOKEN, session=session, default=DefaultBotProperties(parse_mode="Markdown"))
 dp = Dispatcher()
 router = Router()
 
+# ---------- Вопросы ----------
 QUESTIONS = [
     {"s": "Личные данные", "q": "Как вас зовут? (ФИО)", "t": "open"},
     {"s": "Личные данные", "q": "Сколько лет вы руководите этой компанией?", "t": "open"},
@@ -103,11 +107,13 @@ class Survey(StatesGroup):
 
 user_sessions = {}
 
+# ---------- Работа с Excel ----------
 def init_excel():
     if os.path.exists(EXCEL_FILE):
         return
     import openpyxl
     from openpyxl.styles import Font, Alignment, PatternFill
+    os.makedirs(DATA_DIR, exist_ok=True)
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Ответы"
@@ -137,9 +143,11 @@ def save_to_excel_final(user_id, username, answers_list):
             max_len = max(len(str(cell.value or '')) for cell in col)
             ws.column_dimensions[openpyxl.utils.get_column_letter(col[0].column)].width = min(max(max_len + 3, 12), 60)
         wb.save(EXCEL_FILE)
+        logging.info(f"✅ Ответы пользователя {user_id} записаны в Excel")
     except Exception as e:
         logging.error(f"Excel error: {e}")
 
+# ---------- Клавиатуры ----------
 def get_scale_keyboard():
     buttons1 = [InlineKeyboardButton(text=str(i), callback_data=f"scale_{i}") for i in range(1, 6)]
     buttons2 = [InlineKeyboardButton(text=str(i), callback_data=f"scale_{i}") for i in range(6, 11)]
@@ -150,6 +158,7 @@ def get_choice_keyboard(opts):
         [InlineKeyboardButton(text=opt, callback_data=f"choice_{i}")] for i, opt in enumerate(opts)
     ])
 
+# ---------- Форматирование отчёта ----------
 def format_report(user_id, username, answers_list):
     lines = [
         "📋 ДИАГНОСТИКА — «Пластик Руси»",
@@ -174,14 +183,30 @@ def get_progress_bar(current_question, total_questions):
     bar = '▓' * filled + '░' * (bar_length - filled)
     return f"Прогресс: {bar} [{current_question}/{total_questions}]"
 
-# ---------------- Хендлеры ----------------
+# ---------- Хендлеры ----------
 @router.message(CommandStart())
 async def start(message: Message, state: FSMContext):
+    # Приветственный блок
+    welcome = (
+        "👋 *Привет! Это диагностика управленческой команды «Пластик Руси»*\n\n"
+        "📋 *Что будет:*\n"
+        f"• Вам предстоит ответить на *{len(QUESTIONS)} вопросов* по ключевым блокам управления.\n"
+        "• Вопросы разного типа: открытые, оценка по шкале 1–10, выбор варианта.\n"
+        "• В каждом сообщении будет *прогресс‑бар*, чтобы вы видели, сколько пройдено.\n\n"
+        "⏱ *Сколько времени займёт:* примерно 20–30 минут (зависит от темпа ответов).\n"
+        "🧠 *Совет:* отвечайте честно и без подготовки — важна реальная картина, а не «правильные» ответы.\n\n"
+        "📊 *Результат:* после завершения вы получите полный текстовый отчёт, "
+        "а все данные сохранятся в единую таблицу для анализа.\n\n"
+        "👉 Чтобы начать, просто продолжайте — первый вопрос уже здесь:"
+    )
+    await message.answer(welcome, parse_mode="Markdown")
+
     await state.set_state(Survey.answering)
     user_sessions[message.from_user.id] = {
         "current_q": 0,
         "answers": []
     }
+
     q = QUESTIONS[0]
     progress = get_progress_bar(1, len(QUESTIONS))
     text = f"{progress}\n\n{q['q']}"
@@ -251,7 +276,29 @@ async def next_question(msg, user_id, state: FSMContext):
     else:
         await msg.answer(text)
 
-# ---------------- Запуск ----------------
+# ---------- Команда /export ----------
+@router.message(Command("export"))
+async def export_excel(message: Message):
+    if message.from_user.id != ADMIN_CHAT_ID:
+        await message.answer("⛔ У вас нет доступа к этой команде.")
+        return
+
+    if not os.path.exists(EXCEL_FILE):
+        await message.answer("📭 Таблица пока пуста — никто ещё не прошёл диагностику.")
+        return
+
+    try:
+        file = FSInputFile(EXCEL_FILE, filename="diagnostics_results.xlsx")
+        await message.answer_document(
+            file,
+            caption=f"📊 *Результаты диагностики*\n🕐 {datetime.now().strftime('%d.%m.%Y %H:%M')}",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        logging.error(f"Ошибка отправки Excel: {e}")
+        await message.answer("❌ Не удалось отправить файл. Проверьте логи.")
+
+# ---------- Webhook / Polling ----------
 async def set_webhook():
     try:
         await bot.delete_webhook(drop_pending_updates=True)
@@ -282,7 +329,6 @@ async def main():
         webhook_requests_handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
         webhook_requests_handler.register(app, path=WEBHOOK_PATH)
 
-        # Регистрируем startup/shutdown
         app.on_startup.append(lambda _: on_startup(bot))
         app.on_shutdown.append(lambda _: on_shutdown(bot))
 
