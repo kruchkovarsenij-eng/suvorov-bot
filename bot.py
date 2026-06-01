@@ -3,7 +3,6 @@ import os
 import subprocess
 import asyncio
 
-# Моментальный вывод логов для Railway
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 print("--- [DOCKER START] ИНИЦИАЛИЗАЦИЯ СИСТЕМНОГО ОКРУЖЕНИЯ ---", flush=True)
@@ -25,7 +24,6 @@ from aiogram.client.default import DefaultBotProperties
 
 print("--- [DOCKER START] ЗАПУСК СВЕРХНАДЕЖНОГО AIOGRAM ЯДРА ---", flush=True)
 
-# ⚡️ ТВОЙ СВЕЖИЙ ТОКЕН УЖЕ ЗДЕСЬ:
 TOKEN = "8959504034:AAFTvRop6ApDFX6dCnngx50LmEye_WtZ6C4"
 ADMIN_CHAT_ID = 8743677274
 EXCEL_FILE = "diagnostics_results.xlsx"
@@ -110,7 +108,7 @@ def append_to_excel(session):
         ws = wb.active
         row_data = [datetime.now().strftime("%d.%m.%Y %H:%M"), str(session["user_id"]), f"@{session['username']}" if session["username"] else "—"]
         for i in range(len(QUESTIONS)):
-            row_data.append(str(session["answers"][i]) if i < len(session["answers"]) else "—")
+            row_data.append(str(session["answers"][i]) if i < len(session["answers"]) ...
         ws.append(row_data)
         for col in ws.columns:
             max_len = max(len(str(cell.value or '')) for cell in col)
@@ -143,3 +141,6 @@ def format_report(session):
 async def send_question(chat_id, session):
     idx = session["current"]
     if idx >= len(QUESTIONS):
+        await finish_diagnostic(chat_id, session)
+        return
+    q = QUESTIONS[idx]
