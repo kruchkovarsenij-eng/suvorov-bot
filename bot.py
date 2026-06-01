@@ -14,7 +14,7 @@ try:
     import openpyxl
 except ModuleNotFoundError:
     print("Кэш сборщика пуст. Принудительно устанавливаю библиотеки...", flush=True)
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "aiogram>=3.0.0", "openpyxl"])
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "aiogram>=3.0.0", "openpyxl", "aiohttp"])
     print("Установка успешно завершена! ✅", flush=True)
 
 from aiogram import Bot, Dispatcher, F, Router
@@ -24,12 +24,21 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+from aiohttp import web
 
-print("--- [DOCKER START] ЗАПУСК СВЕРХНАДЕЖНОГО AIOGRAM ЯДРА ---", flush=True)
+print("--- [DOCKER START] ЗАПУСК AIOGRAM НА WEBHOOK ---", flush=True)
 
 TOKEN = "8959504034:AAFTvRop6ApDFX6dCnngx50LmEye_WtZ6C4"
 ADMIN_CHAT_ID = 8743677274
 EXCEL_FILE = "diagnostics_results.xlsx"
+
+# Railway предоставляет порт через переменную окружения PORT
+WEBHOOK_PORT = int(os.getenv("PORT", 8000))
+# Домен, который выдал Railway (например, suvorov-bot.railway.app)
+WEBHOOK_HOST = os.getenv("WEBHOOK_HOST", "https://твой-домен.railway.app")
+WEBHOOK_PATH = "/webhook"
+WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -38,6 +47,7 @@ bot = Bot(token=TOKEN, session=session, default=DefaultBotProperties(parse_mode=
 dp = Dispatcher()
 router = Router()
 
+# ... ВЕСЬ СПИСОК QUESTIONS БЕЗ ИЗМЕНЕНИЙ ...
 QUESTIONS = [
     {"s": "Личные данные", "q": "Как вас зовут? (ФИО)", "t": "open"},
     {"s": "Личные данные", "q": "Сколько лет вы руководите этой компанией?", "t": "open"},
@@ -221,7 +231,6 @@ async def next_question(msg, user_id, state: FSMContext):
     session = user_sessions[user_id]
     idx = session["current_q"]
     if idx >= len(QUESTIONS):
-        # Опрос завершён
         save_to_excel_final(user_id, msg.from_user.username, session["answers"])
         report = format_report(user_id, msg.from_user.username, session["answers"])
         await msg.answer("✅ Спасибо за ответы! Вот ваша диагностика:\n\n" + report)
@@ -238,12 +247,30 @@ async def next_question(msg, user_id, state: FSMContext):
     else:
         await msg.answer(text)
 
-# ---------------- Запуск (с защитой от конфликта) ----------------
+# ---------------- Webhook‑запуск ----------------
+async def on_startup(bot: Bot):
+    await bot.set_webhook(WEBHOOK_URL, drop_pending_updates=True)
+    logging.info(f"Webhook установлен на {WEBHOOK_URL}")
+
+async def on_shutdown(bot: Bot):
+    await bot.delete_webhook()
+    logging.info("Webhook удалён")
+
 async def main():
     dp.include_router(router)
-    # Сбрасываем предыдущие вебхуки и неподтверждённые обновления, чтобы избежать конфликта
-    await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot)
+
+    app = web.Application()
+
+    # Регистрируем обработчики aiogram в aiohttp
+    webhook_requests_handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
+    webhook_requests_handler.register(app, path=WEBHOOK_PATH)
+
+    # Настройка жизненного цикла
+    app.on_startup.append(lambda _: on_startup(bot))
+    app.on_shutdown.append(lambda _: on_shutdown(bot))
+
+    return app
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    app = asyncio.run(main())
+    web.run_app(app, host="0.0.0.0", port=WEBHOOK_PORT)
