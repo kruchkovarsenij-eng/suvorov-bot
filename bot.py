@@ -12,6 +12,7 @@ print("--- [DOCKER START] ИНИЦИАЛИЗАЦИЯ СИСТЕМНОГО ОКР
 try:
     import aiogram
     import openpyxl
+    import aiohttp
 except ModuleNotFoundError:
     print("Кэш сборщика пуст. Принудительно устанавливаю библиотеки...", flush=True)
     subprocess.check_call([sys.executable, "-m", "pip", "install", "aiogram>=3.0.0", "openpyxl", "aiohttp"])
@@ -27,27 +28,30 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 
-print("--- [DOCKER START] ЗАПУСК AIOGRAM НА WEBHOOK ---", flush=True)
+print("--- [DOCKER START] ЗАПУСК AIOGRAM ЯДРА ---", flush=True)
 
 TOKEN = "8959504034:AAFTvRop6ApDFX6dCnngx50LmEye_WtZ6C4"
 ADMIN_CHAT_ID = 8743677274
 EXCEL_FILE = "diagnostics_results.xlsx"
 
-# Railway предоставляет порт через переменную окружения PORT
-WEBHOOK_PORT = int(os.getenv("PORT", 8000))
-# Домен, который выдал Railway (например, suvorov-bot.railway.app)
-WEBHOOK_HOST = os.getenv("WEBHOOK_HOST", "https://твой-домен.railway.app")
+# Настройки вебхука
+WEBHOOK_HOST = os.getenv("WEBHOOK_HOST", "https://suvorov-bot-production.up.railway.app")
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
+WEBHOOK_PORT = int(os.getenv("PORT", 8080))
+
+# Переменная для принудительного использования polling (задай USE_POLLING=true в Railway Variables)
+USE_POLLING = os.getenv("USE_POLLING", "false").lower() == "true"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Включаем логирование всех HTTP‑запросов (чтобы видеть, приходят ли сообщения от Telegram)
+logging.getLogger('aiohttp.access').setLevel(logging.DEBUG)
 
 session = AiohttpSession()
 bot = Bot(token=TOKEN, session=session, default=DefaultBotProperties(parse_mode="Markdown"))
 dp = Dispatcher()
 router = Router()
 
-# ... ВЕСЬ СПИСОК QUESTIONS БЕЗ ИЗМЕНЕНИЙ ...
 QUESTIONS = [
     {"s": "Личные данные", "q": "Как вас зовут? (ФИО)", "t": "open"},
     {"s": "Личные данные", "q": "Сколько лет вы руководите этой компанией?", "t": "open"},
@@ -247,30 +251,46 @@ async def next_question(msg, user_id, state: FSMContext):
     else:
         await msg.answer(text)
 
-# ---------------- Webhook‑запуск ----------------
+# ---------------- Запуск ----------------
+async def set_webhook():
+    try:
+        await bot.delete_webhook(drop_pending_updates=True)
+        await asyncio.sleep(1)
+        await bot.set_webhook(WEBHOOK_URL)
+        logging.info(f"Вебхук установлен на {WEBHOOK_URL}")
+    except Exception as e:
+        logging.error(f"Ошибка установки вебхука: {e}")
+
 async def on_startup(bot: Bot):
-    await bot.set_webhook(WEBHOOK_URL, drop_pending_updates=True)
-    logging.info(f"Webhook установлен на {WEBHOOK_URL}")
+    if not USE_POLLING:
+        await set_webhook()
 
 async def on_shutdown(bot: Bot):
-    await bot.delete_webhook()
-    logging.info("Webhook удалён")
+    if not USE_POLLING:
+        await bot.delete_webhook()
 
 async def main():
     dp.include_router(router)
 
-    app = web.Application()
+    if USE_POLLING:
+        logging.info("Запуск в режиме POLLING")
+        await bot.delete_webhook(drop_pending_updates=True)
+        await dp.start_polling(bot)
+    else:
+        logging.info("Запуск в режиме WEBHOOK")
+        app = web.Application()
+        webhook_requests_handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
+        webhook_requests_handler.register(app, path=WEBHOOK_PATH)
 
-    # Регистрируем обработчики aiogram в aiohttp
-    webhook_requests_handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
-    webhook_requests_handler.register(app, path=WEBHOOK_PATH)
+        # Регистрируем startup/shutdown
+        app.on_startup.append(lambda _: on_startup(bot))
+        app.on_shutdown.append(lambda _: on_shutdown(bot))
 
-    # Настройка жизненного цикла
-    app.on_startup.append(lambda _: on_startup(bot))
-    app.on_shutdown.append(lambda _: on_shutdown(bot))
-
-    return app
+        return app
 
 if __name__ == "__main__":
-    app = asyncio.run(main())
-    web.run_app(app, host="0.0.0.0", port=WEBHOOK_PORT)
+    if USE_POLLING:
+        asyncio.run(main())
+    else:
+        app = asyncio.run(main())
+        web.run_app(app, host="0.0.0.0", port=WEBHOOK_PORT)
