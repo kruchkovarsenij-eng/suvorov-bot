@@ -21,17 +21,17 @@ from datetime import datetime
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
 from aiogram.filters import Command
-from aiogram.client.default import DefaultBotProperties  # 🔥 КРИТИЧЕСКИЙ ИМПОРТ ДЛЯ AIOGRAM V3
+from aiogram.client.default import DefaultBotProperties
 
 print("--- [DOCKER START] ЗАПУСК СВЕРХНАДЕЖНОГО AIOGRAM ЯДРА ---", flush=True)
 
-TOKEN = "8827819420:AAGS-aXjMvsewGkxAJbBwt2SggWU8Opk5qc"
+# ⚡️ ТВОЙ СВЕЖИЙ ТОКЕН УЖЕ ЗДЕСЬ:
+TOKEN = "8959504034:AAFTvRop6ApDFX6dCnngx50LmEye_WtZ6C4"
 ADMIN_CHAT_ID = 8743677274
 EXCEL_FILE = "diagnostics_results.xlsx"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# 🔥 ИСПРАВЛЕНО: Безопасная инициализация бота по стандарту aiogram v3 с защитой от краша ядра
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="Markdown"))
 dp = Dispatcher()
 
@@ -140,3 +140,6 @@ def format_report(session):
         lines.append(f"\n{i+1}. {clean_q}\n   → {ans}")
     return "\n".join(lines)
 
+async def send_question(chat_id, session):
+    idx = session["current"]
+    if idx >= len(QUESTIONS):
