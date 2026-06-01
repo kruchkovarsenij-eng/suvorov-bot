@@ -17,11 +17,13 @@ except ModuleNotFoundError:
 
 import logging
 from datetime import datetime
-from aiogram import Bot, Dispatcher, F
+from aiogram import Bot, Dispatcher, F, Router
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandStart
 from aiogram.client.default import DefaultBotProperties
-from aiogram.client.session.aiohttp import AiohttpSession  # 🔥 КРИТИЧЕСКИЙ ИМПОРТ ДЛЯ ПРОБИТИЯ СЕТИ
+from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 
 print("--- [DOCKER START] ЗАПУСК СВЕРХНАДЕЖНОГО AIOGRAM ЯДРА ---", flush=True)
 
@@ -31,7 +33,6 @@ EXCEL_FILE = "diagnostics_results.xlsx"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# 🔥 ИСПРАВЛЕНО: Явно принудительно открываем чистую сетевую сессию в обход блокировок Railway
 session = AiohttpSession()
 bot = Bot(token=TOKEN, session=session, default=DefaultBotProperties(parse_mode="Markdown"))
 dp = Dispatcher()
@@ -98,9 +99,9 @@ def init_excel():
     for i, q in enumerate(QUESTIONS):
         headers.append(f"Вопрос {i+1}: {q['q'].replace('\n', ' ')} [{q['s']}]")
     ws.append(headers)
-    for cell in ws:
+    for cell in ws[1]:
         cell.font, cell.fill, cell.alignment = hf, hf_fill, ca
-    ws.row_dimensions.height = 35
+    ws.row_dimensions[1].height = 35
     wb.save(EXCEL_FILE)
 
 def append_to_excel(session):
@@ -115,10 +116,10 @@ def append_to_excel(session):
         ws.append(row_data)
         for col in ws.columns:
             max_len = max(len(str(cell.value or '')) for cell in col)
-            ws.column_dimensions[openpyxl.utils.get_column_letter(col.column)].width = min(max(max_len + 3, 12), 60)
+            ws.column_dimensions[openpyxl.utils.get_column_letter(col[0].column)].width = min(max(max_len + 3, 12), 60)
         wb.save(EXCEL_FILE)
     except Exception as e:
-        logger.error(f"Excel error: {e}")
+        logging.error(f"Excel error: {e}")
 
 def get_scale_keyboard():
     buttons1 = [InlineKeyboardButton(text=str(i), callback_data=f"scale_{i}") for i in range(1, 6)]
@@ -138,3 +139,93 @@ def format_report(session):
             lines.extend([f"\n{'━'*28}", f"📌 {current_section.upper()}", f"{'━'*28}"])
         ans = answers[i] if i < len(answers) else "—"
         clean_q = q['q'].replace('\n\n', ' ').replace('\n', ' ')
+        lines.append(f"❓ {clean_q}")
+        lines.append(f"➜ {ans}")
+    return "\n".join(lines)
+
+# ---------------- FSM и Хендлеры ----------------
+class Survey(StatesGroup):
+    answering = State()
+
+router = Router()
+
+@router.message(CommandStart())
+async def start(message: Message, state: FSMContext):
+    await state.set_state(Survey.answering)
+    user_sessions[message.from_user.id] = {
+        "user_id": message.from_user.id,
+        "username": message.from_user.username,
+        "answers": [],
+        "current_q": 0
+    }
+    q = QUESTIONS[0]
+    if q["t"] == "scale":
+        await message.answer(q["q"], reply_markup=get_scale_keyboard())
+    elif q["t"] == "choice":
+        await message.answer(q["q"], reply_markup=get_choice_keyboard(q["opts"]))
+    else:
+        await message.answer(q["q"])
+
+@router.callback_query(F.data.startswith("scale_"))
+async def scale_answer(callback: CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id
+    session = user_sessions.get(user_id)
+    if not session:
+        await callback.answer("Начните с /start")
+        return
+    value = callback.data.split("_")[1]
+    session["answers"].append(value)
+    session["current_q"] += 1
+    await next_question(callback.message, user_id, state)
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("choice_"))
+async def choice_answer(callback: CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id
+    session = user_sessions.get(user_id)
+    if not session:
+        await callback.answer("Начните с /start")
+        return
+    idx = int(callback.data.split("_")[1])
+    answer_text = QUESTIONS[session["current_q"]]["opts"][idx]
+    session["answers"].append(answer_text)
+    session["current_q"] += 1
+    await next_question(callback.message, user_id, state)
+    await callback.answer()
+
+@router.message(Survey.answering)
+async def open_answer(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    session = user_sessions.get(user_id)
+    if not session:
+        await message.answer("Начните с /start")
+        return
+    session["answers"].append(message.text)
+    session["current_q"] += 1
+    await next_question(message, user_id, state)
+
+async def next_question(msg, user_id, state: FSMContext):
+    session = user_sessions[user_id]
+    idx = session["current_q"]
+    if idx >= len(QUESTIONS):
+        # опрос завершён
+        append_to_excel(session)
+        report = format_report(session)
+        await msg.answer("✅ Спасибо за ответы! Вот ваша диагностика:\n\n" + report)
+        await state.clear()
+        return
+    q = QUESTIONS[idx]
+    if q["t"] == "scale":
+        await msg.answer(q["q"], reply_markup=get_scale_keyboard())
+    elif q["t"] == "choice":
+        await msg.answer(q["q"], reply_markup=get_choice_keyboard(q["opts"]))
+    else:
+        await msg.answer(q["q"])
+
+# ---------------- Запуск ----------------
+async def main():
+    dp.include_router(router)
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
