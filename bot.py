@@ -5,7 +5,6 @@ import asyncio
 import logging
 from datetime import datetime
 
-# Моментальный вывод логов для Railway
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 print("--- [DOCKER START] ИНИЦИАЛИЗАЦИЯ СИСТЕМНОГО ОКРУЖЕНИЯ ---", flush=True)
@@ -85,7 +84,6 @@ QUESTIONS = [
     {"s": "Самооценка лидера", "q": "Что вы хотите получить от диагностики и консалтинга?\n\n 💡 Конкретная метрика успеха, которую готовы зафиксировать как результат", "t": "open"},
 ]
 
-# --- Класс состояний FSM ---
 class Survey(StatesGroup):
     answering = State()
 
@@ -103,9 +101,9 @@ def init_excel():
     for i, q in enumerate(QUESTIONS):
         headers.append(f"Вопрос {i+1}: {q['q'].replace('\n', ' ')} [{q['s']}]")
     ws.append(headers)
-    for cell in ws[1]:
+    for cell in ws:
         cell.font, cell.fill, cell.alignment = hf, hf_fill, ca
-    ws.row_dimensions[1].height = 35
+    ws.row_dimensions.height = 35
     wb.save(EXCEL_FILE)
 
 def save_to_excel_final(user_id, username, answers_list):
@@ -120,7 +118,7 @@ def save_to_excel_final(user_id, username, answers_list):
         ws.append(row_data)
         for col in ws.columns:
             max_len = max(len(str(cell.value or '')) for cell in col)
-            ws.column_dimensions[openpyxl.utils.get_column_letter(col[0].column)].width = min(max(max_len + 3, 12), 60)
+            ws.column_dimensions[openpyxl.utils.get_column_letter(col.column)].width = min(max(max_len + 3, 12), 60)
         wb.save(EXCEL_FILE)
     except Exception as e:
         logging.error(f"Excel error: {e}")
@@ -141,3 +139,4 @@ def format_report(user_id, username, answers_list):
             current_section = q["s"]
             lines.extend([f"\n{'━'*28}", f"📌 {current_section.upper()}", f"{'━'*28}"])
         ans = answers_list[i] if i < len(answers_list) else "—"
+        clean_q = q['q'].replace('\n\n', ' ').replace('\n', ' ')
