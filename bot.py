@@ -1,8 +1,9 @@
 import sys
 import os
 import subprocess
-import asyncio  # 🔥 ИСПРАВЛЕНО: Импорт перенесен на самый верх в глобальную область!
+import asyncio
 
+# Моментальный вывод логов для Railway
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 print("--- [DOCKER START] ИНИЦИАЛИЗАЦИЯ СИСТЕМНОГО ОКРУЖЕНИЯ ---", flush=True)
@@ -20,6 +21,7 @@ from datetime import datetime
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
 from aiogram.filters import Command
+from aiogram.client.default import DefaultBotProperties  # 🔥 КРИТИЧЕСКИЙ ИМПОРТ ДЛЯ AIOGRAM V3
 
 print("--- [DOCKER START] ЗАПУСК СВЕРХНАДЕЖНОГО AIOGRAM ЯДРА ---", flush=True)
 
@@ -29,7 +31,8 @@ EXCEL_FILE = "diagnostics_results.xlsx"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-bot = Bot(token=TOKEN)
+# 🔥 ИСПРАВЛЕНО: Безопасная инициализация бота по стандарту aiogram v3 с защитой от краша ядра
+bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="Markdown"))
 dp = Dispatcher()
 
 QUESTIONS = [
@@ -70,7 +73,7 @@ QUESTIONS = [
     {"s": "Управленческая команда", "q": "Кто из команды точно на своём месте? Кто — нет? Почему до сих пор не изменили ситуацию?", "t": "open"},
     {"s": "Управленческая команда", "q": "Кого из команды вы бы взяли с собой, если бы начинали всё заново? Почему?", "t": "open"},
     {"s": "Управленческая команда", "q": "Что происходит в компании, когда вас нет? Приведите конкретный пример.", "t": "open"},
-    {"s": "Деньги и потери", "q": "Где company теряет деньги прямо сейчас, но причина ещё не устранена?", "t": "open"},
+    {"s": "Деньги и потери", "q": "Где компания теряет деньги прямо сейчас, но причина ещё не устранена?", "t": "open"},
     {"s": "Деньги и потери", "q": "Что является самым узким горлышком в компании прямо сейчас?", "t": "open"},
     {"s": "Самооценка лидера", "q": "Какой управленческий стиль вы используете чаще всего?", "t": "choice", "opts": ["Директивный (я решаю, команда выполняет)", "Делегирующий (ставлю задачу, доверяю результат)", "Коучинговый (развиваю людей через вопросы)", "Хаотичный (по ситуации, системы нет)"]},
     {"s": "Самооценка лидера", "q": "Что вы готовы изменить в собственном стиле управления?\n\n 💡 Конкретно — не «стать лучше», а что именно и в какой срок", "t": "open"},
@@ -137,9 +140,3 @@ def format_report(session):
         lines.append(f"\n{i+1}. {clean_q}\n   → {ans}")
     return "\n".join(lines)
 
-async def send_question(chat_id, session):
-    idx = session["current"]
-    if idx >= len(QUESTIONS):
-        await finish_diagnostic(chat_id, session)
-        return
-    q = QUESTIONS[idx]
