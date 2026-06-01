@@ -71,7 +71,7 @@ QUESTIONS = [
     {"s": "Управленческая команда", "q": "Кто из команды точно на своём месте? Кто — нет? Почему до сих пор не изменили ситуацию?", "t": "open"},
     {"s": "Управленческая команда", "q": "Кого из команды вы бы взяли с собой, если бы начинали всё заново? Почему?", "t": "open"},
     {"s": "Управленческая команда", "q": "Что происходит в компании, когда вас нет? Приведите конкретный пример.", "t": "open"},
-    {"s": "Деньги и потери", "q": "Где компания теряет деньги прямо сейчас, но причина ещё не устранена?", "t": "open"},
+    {"s": "Деньги и потери", "q": "Где company теряет деньги прямо сейчас, но причина ещё не устранена?", "t": "open"},
     {"s": "Деньги и потери", "q": "Что является самым узким горлышком в компании прямо сейчас?", "t": "open"},
     {"s": "Самооценка лидера", "q": "Какой управленческий стиль вы используете чаще всего?", "t": "choice", "opts": ["Директивный (я решаю, команда выполняет)", "Делегирующий (ставлю задачу, доверяю результат)", "Коучинговый (развиваю людей через вопросы)", "Хаотичный (по ситуации, системы нет)"]},
     {"s": "Самооценка лидера", "q": "Что вы готовы изменить в собственном стиле управления?\n\n 💡 Конкретно — не «стать лучше», а что именно и в какой срок", "t": "open"},
@@ -108,7 +108,7 @@ def append_to_excel(session):
         ws = wb.active
         row_data = [datetime.now().strftime("%d.%m.%Y %H:%M"), str(session["user_id"]), f"@{session['username']}" if session["username"] else "—"]
         for i in range(len(QUESTIONS)):
-            row_data.append(str(session["answers"][i]) if i < len(session["answers"]) ...
+            row_data.append(str(session["answers"][i]) if i < len(session["answers"]) else "—")
         ws.append(row_data)
         for col in ws.columns:
             max_len = max(len(str(cell.value or '')) for cell in col)
@@ -143,4 +143,3 @@ async def send_question(chat_id, session):
     if idx >= len(QUESTIONS):
         await finish_diagnostic(chat_id, session)
         return
-    q = QUESTIONS[idx]
