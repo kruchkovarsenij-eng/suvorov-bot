@@ -1,14 +1,26 @@
-import os
 import sys
+import os
+import subprocess
+
+# Включаем моментальный вывод логов
+sys.stdout.reconfigure(line_buffering=True)
+sys.stderr.reconfigure(line_buffering=True)
+print("--- [DOCKER START] ИНИЦИАЛИЗАЦИЯ СИСТЕМНОГО ОКРУЖЕНИЯ ---", flush=True)
+
+# 🚀 ФОРСИРОВАННАЯ УСТАНОВКА ПАКЕТОВ В ОБХОД БАГОВАННОГО КЭША RAILWAY
+try:
+    import aiogram
+    import openpyxl
+except ModuleNotFoundError:
+    print("Кэш сборщика пуст. Принудительно устанавливаю библиотеки...", flush=True)
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "aiogram>=3.0.0", "openpyxl"])
+    print("Установка успешно завершена! ✅", flush=True)
+
 import logging
 from datetime import datetime
-import asyncio
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
 from aiogram.filters import Command
-
-sys.stdout.reconfigure(line_buffering=True)
-sys.stderr.reconfigure(line_buffering=True)
 
 print("--- [DOCKER START] ЗАПУСК СВЕРХНАДЕЖНОГО AIOGRAM ЯДРА ---", flush=True)
 
@@ -132,11 +144,3 @@ async def send_question(chat_id, session):
         await finish_diagnostic(chat_id, session)
         return
     q = QUESTIONS[idx]
-    progress = int((idx / len(QUESTIONS)) * 10)
-    text = f"📌 *{q['s']}*\n\n*Вопрос {idx+1} из {len(QUESTIONS)}*\n{'▓'*progress + '░'*(10-progress)}\n\n{q['q']}"
-    reply_markup = get_scale_keyboard() if q["t"] == "scale" else (get_choice_keyboard(q["opts"]) if q["t"] == "choice" else None)
-    await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
-    session["lock"] = False
-
-async def finish_diagnostic(chat_id, session):
-    append_to_excel(session)
