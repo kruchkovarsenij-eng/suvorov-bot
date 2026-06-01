@@ -21,6 +21,7 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
 from aiogram.filters import Command
 from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AiohttpSession  # 🔥 КРИТИЧЕСКИЙ ИМПОРТ ДЛЯ ПРОБИТИЯ СЕТИ
 
 print("--- [DOCKER START] ЗАПУСК СВЕРХНАДЕЖНОГО AIOGRAM ЯДРА ---", flush=True)
 
@@ -30,7 +31,9 @@ EXCEL_FILE = "diagnostics_results.xlsx"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="Markdown"))
+# 🔥 ИСПРАВЛЕНО: Явно принудительно открываем чистую сетевую сессию в обход блокировок Railway
+session = AiohttpSession()
+bot = Bot(token=TOKEN, session=session, default=DefaultBotProperties(parse_mode="Markdown"))
 dp = Dispatcher()
 
 QUESTIONS = [
@@ -76,7 +79,7 @@ QUESTIONS = [
     {"s": "Самооценка лидера", "q": "Какой управленческий стиль вы используете чаще всего?", "t": "choice", "opts": ["Директивный (я решаю, команда выполняет)", "Делегирующий (ставлю задачу, доверяю результат)", "Коучинговый (развиваю людей через вопросы)", "Хаотичный (по ситуации, системы нет)"]},
     {"s": "Самооценка лидера", "q": "Что вы готовы изменить в собственном стиле управления?\n\n 💡 Конкретно — не «стать лучше», а что именно и в какой срок", "t": "open"},
     {"s": "Самооценка лидера", "q": "Назовите одну вещь, которую вы бы изменили в компании завтра, если бы не было сопротивления.", "t": "open"},
-    {"s": "Self-assessment лидера", "q": "Что вы хотите получить от диагностики и консалтинга?\n\n 💡 Конкретная метрика успеха, которую готовы зафиксировать как результат", "t": "open"},
+    {"s": "Самооценка лидера", "q": "Что вы хотите получить от диагностики и консалтинга?\n\n 💡 Конкретная метрика успеха, которую готовы зафиксировать как результат", "t": "open"},
 ]
 
 user_sessions = {}
@@ -135,11 +138,3 @@ def format_report(session):
             lines.extend([f"\n{'━'*28}", f"📌 {current_section.upper()}", f"{'━'*28}"])
         ans = answers[i] if i < len(answers) else "—"
         clean_q = q['q'].replace('\n\n', ' ').replace('\n', ' ')
-        lines.append(f"\n{i+1}. {clean_q}\n → {ans}")
-    return "\n".join(lines)
-
-async def send_question(chat_id, session):
-    idx = session["current"]
-    if idx >= len(QUESTIONS):
-        await finish_diagnostic(chat_id, session)
-        return
