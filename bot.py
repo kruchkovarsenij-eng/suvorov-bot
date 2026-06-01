@@ -2,21 +2,24 @@ import os
 import sys
 import logging
 from datetime import datetime
-import telebot
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+import asyncio
+from aiogram import Bot, Dispatcher, F
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
+from aiogram.filters import Command
 
-# Принудительно отключаем буферизацию вывода логов для Railway
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 
-print("--- [DOCKER START] ЗАПУСК НАДЕЖНОГО ЯДРА БОТА ---", flush=True)
+print("--- [DOCKER START] ЗАПУСК СВЕРХНАДЕЖНОГО AIOGRAM ЯДРА ---", flush=True)
 
 TOKEN = "8827819420:AAGS-aXjMvsewGkxAJbBwt2SggWU8Opk5qc"
 ADMIN_CHAT_ID = 8743677274
 EXCEL_FILE = "diagnostics_results.xlsx"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-bot = telebot.TeleBot(TOKEN, parse_mode="Markdown")
+
+bot = Bot(token=TOKEN)
+dp = Dispatcher()
 
 QUESTIONS = [
     {"s": "Личные данные", "q": "Как вас зовут? (ФИО)", "t": "open"},
@@ -103,16 +106,12 @@ def append_to_excel(session):
         logger.error(f"Excel error: {e}")
 
 def get_scale_keyboard():
-    markup = InlineKeyboardMarkup(row_width=5)
-    markup.add(*[InlineKeyboardButton(str(i), callback_data=f"scale_{i}") for i in range(1, 6)])
-    markup.add(*[InlineKeyboardButton(str(i), callback_data=f"scale_{i}") for i in range(6, 11)])
-    return markup
+    buttons1 = [InlineKeyboardButton(text=str(i), callback_data=f"scale_{i}") for i in range(1, 6)]
+    buttons2 = [InlineKeyboardButton(text=str(i), callback_data=f"scale_{i}") for i in range(6, 11)]
+    return InlineKeyboardMarkup(inline_keyboard=[buttons1, buttons2])
 
 def get_choice_keyboard(opts):
-    markup = InlineKeyboardMarkup()
-    for i, opt in enumerate(opts):
-        markup.add(InlineKeyboardButton(opt, callback_data=f"choice_{i}"))
-    return markup
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=opt, callback_data=f"choice_{i}")] for i, opt in enumerate(opts)])
 
 def format_report(session):
     answers = session["answers"]
@@ -127,18 +126,17 @@ def format_report(session):
         lines.append(f"\n{i+1}. {clean_q}\n   → {ans}")
     return "\n".join(lines)
 
-def send_question(chat_id, session):
+async def send_question(chat_id, session):
     idx = session["current"]
     if idx >= len(QUESTIONS):
-        finish(chat_id, session)
+        await finish_diagnostic(chat_id, session)
         return
     q = QUESTIONS[idx]
     progress = int((idx / len(QUESTIONS)) * 10)
     text = f"📌 *{q['s']}*\n\n*Вопрос {idx+1} из {len(QUESTIONS)}*\n{'▓'*progress + '░'*(10-progress)}\n\n{q['q']}"
     reply_markup = get_scale_keyboard() if q["t"] == "scale" else (get_choice_keyboard(q["opts"]) if q["t"] == "choice" else None)
-    bot.send_message(chat_id, text, reply_markup=reply_markup)
+    await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
     session["lock"] = False
 
-def finish(chat_id, session):
+async def finish_diagnostic(chat_id, session):
     append_to_excel(session)
-    if session["user_id"] in user_sessions: del user_sessions[session["user_id"]]
