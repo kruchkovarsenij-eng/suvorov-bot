@@ -32,7 +32,7 @@ from aiohttp import web
 print("--- [DOCKER START] ЗАПУСК AIOGRAM ЯДРА ---", flush=True)
 
 # ---------- Конфигурация ----------
-TOKEN = "8959504034:AAFTvRop6ApDFX6dCnngx50LmEye_WtZ6C4"
+TOKEN = "8988767058:AAHRfBR8yKAHipTBmEYExmQ3MsFcAwYuDog"
 ADMIN_CHAT_ID = 8743677274
 
 DATA_DIR = "data"
